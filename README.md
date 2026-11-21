@@ -248,7 +248,8 @@ Below are other different ways you can run OLake Go:
 
 - [x] Interoperability (Positional & Deletion Vector Writes)
 - [x] ADLS Support
-- [x] Streams v2 (GitOps)
+- [x] Streams v2 
+- [x] GitOps
 
 #### Upcoming
 
