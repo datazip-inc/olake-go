@@ -437,6 +437,8 @@ type stubDriver struct {
 	typ            string
 	cdcSupported   bool
 	streamNamesErr error
+	streams        []types.StreamID
+	produceStream  *types.Stream
 }
 
 func (s stubDriver) GetConfigRef() Config { return nil }
@@ -449,10 +451,16 @@ func (s stubDriver) SetupState(*types.State) {}
 func (s stubDriver) MaxConnections() int     { return 0 }
 func (s stubDriver) MaxRetries() int         { return 0 }
 func (s stubDriver) GetStreamNames(context.Context) ([]types.StreamID, error) {
-	return nil, s.streamNamesErr
+	if s.streamNamesErr != nil {
+		return nil, s.streamNamesErr
+	}
+	return s.streams, nil
 }
 func (s stubDriver) ProduceSchema(context.Context, types.StreamID) (*types.Stream, error) {
-	return &types.Stream{}, nil
+	if s.produceStream != nil {
+		return s.produceStream, nil
+	}
+	return types.NewStream("test", "test", nil), nil
 }
 func (s stubDriver) GetOrSplitChunks(context.Context, *destination.WriterPool, types.StreamInterface) (*types.Set[types.Chunk], error) {
 	return types.NewSet[types.Chunk](), nil
@@ -476,6 +484,97 @@ func (s stubDriver) StreamChanges(context.Context, int, map[string]any, CDCMsgFn
 	return nil, nil //nolint:nilnil // no metadata state to report
 }
 func (s stubDriver) PostCDC(context.Context, int) error { return nil }
+
+type stubNormalizingDriver struct {
+	stubDriver
+	normalization bool
+}
+
+func (s stubNormalizingDriver) DefaultNormalization() bool {
+	return s.normalization
+}
+
+func TestDefaultNormalization(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("relational driver defaults to true", func(t *testing.T) {
+		driver := NewAbstractDriver(ctx, stubDriver{typ: "postgres"})
+		assert.True(t, driver.DefaultNormalization())
+	})
+
+	t.Run("non-relational driver defaults to false", func(t *testing.T) {
+		driver := NewAbstractDriver(ctx, stubDriver{typ: "mongodb"})
+		assert.False(t, driver.DefaultNormalization())
+	})
+
+	t.Run("normalizer override true on non-relational driver", func(t *testing.T) {
+		driver := NewAbstractDriver(ctx, stubNormalizingDriver{
+			stubDriver:    stubDriver{typ: "s3"},
+			normalization: true,
+		})
+		assert.True(t, driver.DefaultNormalization())
+	})
+
+	t.Run("normalizer override false on relational driver", func(t *testing.T) {
+		driver := NewAbstractDriver(ctx, stubNormalizingDriver{
+			stubDriver:    stubDriver{typ: "postgres"},
+			normalization: false,
+		})
+		assert.False(t, driver.DefaultNormalization())
+	})
+}
+
+func TestDiscoverStreamNormalization(t *testing.T) {
+	ctx := context.Background()
+	streamID := types.StreamID{Namespace: "ns", Name: "stream1"}
+
+	t.Run("stream normalization inherits DefaultNormalizer true", func(t *testing.T) {
+		driver := NewAbstractDriver(ctx, stubNormalizingDriver{
+			stubDriver: stubDriver{
+				typ:     "s3",
+				streams: []types.StreamID{streamID},
+			},
+			normalization: true,
+		})
+		streams, err := driver.Discover(ctx, 0, false)
+		require.NoError(t, err)
+		require.Len(t, streams, 1)
+		require.NotNil(t, streams[0].DefaultStreamProperties)
+		assert.True(t, streams[0].DefaultStreamProperties.Normalization)
+	})
+
+	t.Run("stream normalization inherits DefaultNormalizer false", func(t *testing.T) {
+		driver := NewAbstractDriver(ctx, stubNormalizingDriver{
+			stubDriver: stubDriver{
+				typ:     "s3",
+				streams: []types.StreamID{streamID},
+			},
+			normalization: false,
+		})
+		streams, err := driver.Discover(ctx, 0, false)
+		require.NoError(t, err)
+		require.Len(t, streams, 1)
+		require.NotNil(t, streams[0].DefaultStreamProperties)
+		assert.False(t, streams[0].DefaultStreamProperties.Normalization)
+	})
+
+	t.Run("pre-set stream normalization is preserved", func(t *testing.T) {
+		preSetStream := types.NewStream("stream1", "ns", nil)
+		preSetStream.DefaultStreamProperties = &types.DefaultStreamProperties{
+			Normalization: true,
+		}
+		driver := NewAbstractDriver(ctx, stubDriver{
+			typ:           "mongodb",
+			streams:       []types.StreamID{streamID},
+			produceStream: preSetStream,
+		})
+		streams, err := driver.Discover(ctx, 0, false)
+		require.NoError(t, err)
+		require.Len(t, streams, 1)
+		require.NotNil(t, streams[0].DefaultStreamProperties)
+		assert.True(t, streams[0].DefaultStreamProperties.Normalization)
+	})
+}
 
 // discoverStreams are the streams stubSampler lists, all in one namespace.
 var discoverStreams = []types.StreamID{{Namespace: "db", Name: "a"}, {Namespace: "db", Name: "b"}, {Namespace: "db", Name: "c"}}

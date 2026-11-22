@@ -100,6 +100,17 @@ func (a *AbstractDriver) SupportedWriteModes() []types.WriteMode {
 	return nil
 }
 
+// DefaultNormalization returns the driver's default normalization setting.
+// Relational drivers default to true; non-relational drivers default to false unless
+// they implement DefaultNormalizer.
+func (a *AbstractDriver) DefaultNormalization() bool {
+	if normalizer, ok := a.driver.(DefaultNormalizer); ok {
+		return normalizer.DefaultNormalization()
+	}
+
+	return types.IsDriverRelational(a.driver.Type())
+}
+
 func (a *AbstractDriver) Discover(ctx context.Context, maxDiscoverThreads int, skipSchema bool) ([]*types.Stream, error) {
 	streams, err := a.driver.GetStreamNames(ctx)
 	if err != nil {
@@ -172,9 +183,14 @@ func (a *AbstractDriver) Discover(ctx context.Context, maxDiscoverThreads int, s
 			convStream.SyncMode = types.FULLREFRESH
 		}
 
+		defaultNormalization := a.DefaultNormalization()
+		if convStream.DefaultStreamProperties != nil {
+			defaultNormalization = convStream.DefaultStreamProperties.Normalization
+		}
+
 		// add default stream properties; the update type is chosen by types.ApplyDestinationDefaults
 		convStream.DefaultStreamProperties = &types.DefaultStreamProperties{
-			Normalization: types.IsDriverRelational(a.driver.Type()),
+			Normalization: defaultNormalization,
 			AppendMode:    types.IsDriverAppendOnly(a.driver.Type()),
 			UpdateType:    types.UpdateTypeEquality,
 		}

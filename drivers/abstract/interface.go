@@ -64,3 +64,9 @@ type UpdateTypeRestricter interface {
 type WriteModeRestricter interface {
 	SupportedWriteModes() []types.WriteMode
 }
+
+// DefaultNormalizer is implemented by drivers that override default stream normalization
+// (e.g. S3 enables normalization by default for CSV and Parquet).
+type DefaultNormalizer interface {
+	DefaultNormalization() bool
+}

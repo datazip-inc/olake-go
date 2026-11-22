@@ -32,6 +32,8 @@ type S3 struct {
 	discoveredFiles map[string][]FileObject // map[streamName][]files
 }
 
+var _ abstract.DefaultNormalizer = (*S3)(nil)
+
 // GetConfigRef returns a reference to the config struct
 func (s *S3) GetConfigRef() abstract.Config {
 	s.config = &Config{}
@@ -46,6 +48,17 @@ func (s *S3) Spec() any {
 // Type returns the driver type identifier
 func (s *S3) Type() string {
 	return "s3"
+}
+
+// DefaultNormalization reports whether streams should have normalization enabled by default.
+// Tabular formats (CSV, Parquet) have known schemas at discover time and default to normalized.
+// Semi-structured formats (JSON, XML) default to unnormalized.
+func (s *S3) DefaultNormalization() bool {
+	if s.config == nil {
+		return false
+	}
+	format := FileFormat(strings.ToLower(string(s.config.FileFormat)))
+	return format == FormatCSV || format == FormatParquet
 }
 
 // Setup initializes the S3 client and validates the configuration

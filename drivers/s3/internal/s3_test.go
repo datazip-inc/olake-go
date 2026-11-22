@@ -351,3 +351,80 @@ func TestFilterFilesByCursor(t *testing.T) {
 		})
 	}
 }
+
+func TestS3DefaultNormalization(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *Config
+		expected bool
+	}{
+		{
+			name:     "nil config",
+			config:   nil,
+			expected: false,
+		},
+		{
+			name: "CSV format",
+			config: &Config{
+				FileFormat: FormatCSV,
+			},
+			expected: true,
+		},
+		{
+			name: "Parquet format",
+			config: &Config{
+				FileFormat: FormatParquet,
+			},
+			expected: true,
+		},
+		{
+			name: "JSON format",
+			config: &Config{
+				FileFormat: FormatJSON,
+			},
+			expected: false,
+		},
+		{
+			name: "XML format",
+			config: &Config{
+				FileFormat: FormatXML,
+			},
+			expected: false,
+		},
+		{
+			name: "CSV format uppercase",
+			config: &Config{
+				FileFormat: "CSV",
+			},
+			expected: true,
+		},
+		{
+			name: "Parquet format mixed case",
+			config: &Config{
+				FileFormat: "Parquet",
+			},
+			expected: true,
+		},
+		{
+			name: "empty format",
+			config: &Config{
+				FileFormat: "",
+			},
+			expected: false,
+		},
+		{
+			name: "unsupported format",
+			config: &Config{
+				FileFormat: "avro",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &S3{config: tt.config}
+			assert.Equal(t, tt.expected, s.DefaultNormalization())
+		})
+	}
+}
