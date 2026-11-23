@@ -287,7 +287,7 @@ type ProcessOutputReader struct {
 func NewProcessLogger(name string, isError bool) (*ProcessOutputReader, *os.File, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create pipe: %v", err)
+		return nil, nil, fmt.Errorf("failed to create pipe: %w", err)
 	}
 
 	reader := &ProcessOutputReader{
