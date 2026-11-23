@@ -291,3 +291,20 @@ func TestConfig_buildTLSConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_Validate_MissingUsername(t *testing.T) {
+	config := &Config{
+		Host:     "localhost",
+		Port:     5432,
+		Database: "postgres",
+		Password: "secret",
+	}
+
+	err := config.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing username, got nil")
+	}
+	if !strings.Contains(err.Error(), "username is required") {
+		t.Fatalf("expected username validation error, got: %v", err)
+	}
+}
