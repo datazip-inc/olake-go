@@ -621,3 +621,22 @@ func TestParquetGetPartitionedFilePath(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkGetPartitionedFilePath(b *testing.B) {
+	stream := newStream(false, "/{region, default_region, }/{created_at, unknown, MM}",
+		map[string]types.DataType{"region": types.String, "created_at": types.Timestamp})
+	p := &Parquet{}
+	p.GetConfigRef()
+	p.config.Path = b.TempDir()
+	if _, _, err := p.Setup(context.Background(), stream, nil, &destination.Options{ThreadID: "bench"}); err != nil {
+		b.Fatalf("Setup: %v", err)
+	}
+
+	values := map[string]any{"region": "us-east-1", "created_at": time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)}
+	ts := time.Now().UTC()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p.getPartitionedFilePath(values, ts)
+	}
+}

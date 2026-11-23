@@ -33,6 +33,8 @@ import (
 
 const parquetTempDirPattern = "olake-parquet-*"
 
+var partitionRegex = regexp.MustCompile(constants.PartitionRegexParquet)
+
 type FileMetadata struct {
 	writer       *pqgo.GenericWriter[any]
 	file         source.ParquetFile
@@ -667,10 +669,8 @@ func (p *Parquet) getPartitionedFilePath(values map[string]any, olakeTimestamp t
 		return p.basePath
 	}
 	// path pattern example /{col_name, 'fallback', granularity}/random_string/{col_name, fallback, granularity}
-	patternRegex := regexp.MustCompile(constants.PartitionRegexParquet)
-
 	// Replace placeholders
-	result := patternRegex.ReplaceAllStringFunc(pattern, func(match string) string {
+	result := partitionRegex.ReplaceAllStringFunc(pattern, func(match string) string {
 		trimmed := strings.Trim(match, "{}")
 		regexVarBlock := strings.Split(trimmed, ",")
 
