@@ -26,7 +26,7 @@ func getSecretKey() ([]byte, *kms.Client, error) {
 	if strings.HasPrefix(secretKey, "arn:aws:kms:") {
 		cfg, err := config.LoadDefaultConfig(context.Background())
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to load AWS config: %s", err)
+			return nil, nil, fmt.Errorf("failed to load AWS config: %w", err)
 		}
 		return []byte(secretKey), kms.NewFromConfig(cfg), nil
 	}
@@ -49,12 +49,12 @@ func Decrypt(encryptedText string) (string, error) {
 	var config string
 	err = json.Unmarshal([]byte(encryptedText), &config)
 	if err != nil {
-		return "", fmt.Errorf("failed to unmarshal JSON string: %v", err)
+		return "", fmt.Errorf("failed to unmarshal JSON string: %w", err)
 	}
 
 	encryptedData, err := base64.StdEncoding.DecodeString(config)
 	if err != nil {
-		return "", fmt.Errorf("failed to decode base64 data: %v", err)
+		return "", fmt.Errorf("failed to decode base64 data: %w", err)
 	}
 
 	// Use KMS if client is provided
@@ -63,7 +63,7 @@ func Decrypt(encryptedText string) (string, error) {
 			CiphertextBlob: encryptedData,
 		})
 		if err != nil {
-			return "", fmt.Errorf("failed to decrypt with KMS: %s", err)
+			return "", fmt.Errorf("failed to decrypt with KMS: %w", err)
 		}
 		return string(result.Plaintext), nil
 	}
