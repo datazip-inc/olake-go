@@ -261,6 +261,11 @@ func (k *Kafka) ProduceSampledSchema(ctx context.Context, streamID types.StreamI
 		_ = k.processKafkaMessages(ctx, reader, func(record types.KafkaRecord) (bool, error) {
 			messageCount++
 			if record.Data != nil {
+				// Kafka wire-format timestamps are always millisecond-precision;
+				// exclude from sample-based inference to avoid a non-deterministic
+				// type set when a message lands on a whole second boundary.
+				delete(record.Data, KafkaTimestamp)
+
 				mu.Lock()
 				// resolve data for schema
 				err := typeutils.Resolve(stream, record.Data)
@@ -279,6 +284,11 @@ func (k *Kafka) ProduceSampledSchema(ctx context.Context, streamID types.StreamI
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch schema for topic %s: %w", streamName, err)
 	}
+
+	// Kafka timestamps are millisecond-precision by protocol; set explicitly
+	// rather than relying on sample inference which is non-deterministic when
+	// a message timestamp falls on a whole-second boundary.
+	stream.UpsertField(KafkaTimestamp, types.TimestampMilli, false, false)
 
 	stream.SourceDefinedPrimaryKey = types.NewSet(Offset, Partition)
 	return stream, nil
