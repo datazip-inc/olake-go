@@ -482,6 +482,27 @@ func TestConfiguredStream_GetSyncMode(t *testing.T) {
 			stream: &Stream{},
 			want:   SyncMode(""),
 		},
+		{
+			// Test case-insensitive handling: uppercase should be lowercased
+			name:     "uppercase sync mode is converted to lowercase",
+			stream:   &Stream{},
+			metadata: StreamMetadata{SyncMode: SyncMode("INCREMENTAL")},
+			want:     SyncMode("incremental"),
+		},
+		{
+			// Test mixed case
+			name:     "mixed case sync mode is converted to lowercase",
+			stream:   &Stream{},
+			metadata: StreamMetadata{SyncMode: SyncMode("Full_Refresh")},
+			want:     SyncMode("full_refresh"),
+		},
+		{
+			// Test that already lowercase values work
+			name:     "lowercase sync mode remains lowercase",
+			stream:   &Stream{},
+			metadata: StreamMetadata{SyncMode: SyncMode("strict_cdc")},
+			want:     SyncMode("strict_cdc"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -894,6 +915,124 @@ func TestConfiguredStream_ResolveUpsertOp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &ConfiguredStream{StreamMetadata: tt.meta}
 			assert.Equal(t, tt.want, s.ResolveUpsertOp())
+		})
+	}
+}
+
+func TestConfiguredStream_Validate_SyncMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		stream      *ConfiguredStream
+		source      *Stream
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid lowercase sync mode",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("incremental")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(INCREMENTAL),
+				AvailableCursorFields: NewSet("id"),
+			},
+			expectError: false,
+		},
+		{
+			name: "valid uppercase sync mode gets lowercased",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{
+					SyncMode:    SyncMode("INCREMENTAL"),
+					CursorField: "id",
+				},
+				Stream: &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(INCREMENTAL),
+				AvailableCursorFields: NewSet("id"),
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid sync mode rejected",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("invalid_mode")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(INCREMENTAL),
+			},
+			expectError: true,
+			errorMsg:    "invalid sync mode[invalid_mode]; must be one of: full_refresh, incremental, cdc, strict_cdc",
+		},
+		{
+			name: "typo in sync mode rejected",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("incrementel")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(INCREMENTAL),
+			},
+			expectError: true,
+			errorMsg:    "invalid sync mode[incrementel]; must be one of: full_refresh, incremental, cdc, strict_cdc",
+		},
+		{
+			name: "empty sync mode is allowed (backward compatibility)",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(INCREMENTAL, FULLREFRESH),
+			},
+			expectError: false,
+		},
+		{
+			name: "valid full_refresh mode",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("full_refresh")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(FULLREFRESH),
+			},
+			expectError: false,
+		},
+		{
+			name: "valid cdc mode",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("cdc")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(CDC),
+			},
+			expectError: false,
+		},
+		{
+			name: "valid strict_cdc mode",
+			stream: &ConfiguredStream{
+				StreamMetadata: StreamMetadata{SyncMode: SyncMode("strict_cdc")},
+				Stream:         &Stream{},
+			},
+			source: &Stream{
+				SupportedSyncModes: NewSet(STRICTCDC),
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.stream.Validate(tt.source)
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

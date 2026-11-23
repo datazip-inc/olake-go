@@ -179,7 +179,8 @@ func (s *ConfiguredStream) defaultStreamProperties() DefaultStreamProperties {
 }
 
 func (s *ConfiguredStream) GetSyncMode() SyncMode {
-	return resolveConfigurableField(s.StreamMetadata.SyncMode, s.Stream.SyncMode)
+	mode := resolveConfigurableField(s.StreamMetadata.SyncMode, s.Stream.SyncMode)
+	return SyncMode(strings.ToLower(string(mode)))
 }
 
 func (s *ConfiguredStream) GetDestinationDatabase(icebergDB *string) string {
@@ -291,6 +292,20 @@ func (s *ConfiguredStream) GetFilter() (FilterConfig, bool, error) {
 // Validate Configured Stream with Source Stream
 func (s *ConfiguredStream) Validate(source *Stream) error {
 	syncMode := s.GetSyncMode()
+	
+	// Validate that sync mode is one of the four known modes
+	validModes := []SyncMode{FULLREFRESH, INCREMENTAL, CDC, STRICTCDC}
+	isValidMode := false
+	for _, mode := range validModes {
+		if syncMode == mode {
+			isValidMode = true
+			break
+		}
+	}
+	if !isValidMode && syncMode != "" {
+		return fmt.Errorf("invalid sync mode[%s]; must be one of: full_refresh, incremental, cdc, strict_cdc", syncMode)
+	}
+	
 	if !source.SupportedSyncModes.Exists(syncMode) {
 		return fmt.Errorf("invalid sync mode[%s]; valid are %v", syncMode, source.SupportedSyncModes)
 	}
