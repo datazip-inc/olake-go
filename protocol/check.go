@@ -12,15 +12,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// validateCheckFlags rejects a check with neither --config nor --destination,
+// and a check with both: with both, the destination branch used to win silently
+// and the source was never checked, so a broken source reported SUCCEEDED.
+func validateCheckFlags() error {
+	// If connector is not set, we are checking the destination
+	if !configPassed() && !destinationPassed() {
+		return errs.Precondition(errs.ConfigInvalid, codeFlagMissing,
+			fmt.Errorf("no connector config or destination config provided"))
+	}
+
+	if configPassed() && destinationPassed() {
+		return errs.Precondition(errs.ConfigInvalid, codeConflictingConfigFlags,
+			fmt.Errorf("check accepts either --config or --destination, got both"))
+	}
+
+	return nil
+}
+
 // checkCmd represents the check command
 var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "check command",
 	PreRunE: func(_ *cobra.Command, _ []string) error {
-		// If connector is not set, we are checking the destination
-		if destinationConfigPath == "not-set" && configPath == "not-set" {
-			return errs.Precondition(errs.ConfigInvalid, codeFlagMissing,
-				fmt.Errorf("no connector config or destination config provided"))
+		if err := validateCheckFlags(); err != nil {
+			return err
 		}
 
 		// check for destination config

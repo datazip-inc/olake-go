@@ -213,6 +213,7 @@ const (
 	// Codes for conditions the CLI detects itself, before any connector is reached.
 	codeFlagMissing                  = "config.flag_missing"
 	codeConflictingCatalogFlags      = "config.conflicting_catalog_flags"
+	codeConflictingConfigFlags       = "config.conflicting_config_flags"
 	codeConflictingDifferenceFlags   = "config.conflicting_difference_flags"
 	codeIncompleteCatalogFlagPair    = "config.incomplete_catalog_flag_pair"
 	codeIncompleteDifferenceFlagPair = "config.incomplete_difference_flag_pair"
@@ -274,6 +275,11 @@ func validateDifferenceFlags() error {
 // destinationPassed reports whether --destination was set; its default is "not-set".
 func destinationPassed() bool {
 	return destinationConfigPath != "" && destinationConfigPath != "not-set"
+}
+
+// configPassed reports whether --config was set; its default is "not-set".
+func configPassed() bool {
+	return configPath != "" && configPath != "not-set"
 }
 
 // loadDestinationConfig fills destinationConfig from --destination; left empty when the flag

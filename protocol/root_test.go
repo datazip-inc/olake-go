@@ -191,6 +191,51 @@ func TestValidateDifferenceFlags(t *testing.T) {
 	}
 }
 
+// resetCheckFlags clears the package-level --config / --destination flag vars
+// validateCheckFlags reads, restoring them after the test.
+func resetCheckFlags(t *testing.T) {
+	t.Helper()
+	prevConfig, prevDestination := configPath, destinationConfigPath
+	configPath, destinationConfigPath = "not-set", "not-set"
+	t.Cleanup(func() {
+		configPath, destinationConfigPath = prevConfig, prevDestination
+	})
+}
+
+// TestValidateCheckFlags covers the shared precondition check the check command
+// applies to --config / --destination: exactly one of them must be passed.
+func TestValidateCheckFlags(t *testing.T) {
+	testCases := []struct {
+		name         string
+		config       string
+		destination  string
+		expectErr    bool
+		expectedCode string
+	}{
+		{name: "neither passed", config: "not-set", destination: "not-set", expectErr: true, expectedCode: codeFlagMissing},
+		{name: "config only", config: "config.json", destination: "not-set"},
+		{name: "destination only", config: "not-set", destination: "destination.json"},
+		{name: "both passed", config: "config.json", destination: "destination.json", expectErr: true, expectedCode: codeConflictingConfigFlags},
+		{name: "empty config counts as not passed", config: "", destination: "destination.json"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetCheckFlags(t)
+			configPath, destinationConfigPath = tc.config, tc.destination
+
+			err := validateCheckFlags()
+			if !tc.expectErr {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			got := errs.From(errs.Classify(err))
+			assert.Equal(t, tc.expectedCode, got.Code)
+		})
+	}
+}
+
 // --destination is optional for discover, so an absent flag must leave an empty config (its
 // empty type compares every field) rather than fail; sync and clear-destination check
 // destinationPassed themselves.
