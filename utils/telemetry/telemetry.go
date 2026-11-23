@@ -365,12 +365,17 @@ func getOutboundIP() string {
 	}
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return string(ip)
+	}
+
 	ipBody, err := io.ReadAll(resp.Body)
 	if err == nil {
 		ip = ipBody
 	}
 
-	return string(ip)
+	return strings.TrimSpace(string(ip))
 }
 
 // getService returns telemetry.json's service, defaulting to the CLI.
