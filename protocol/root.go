@@ -271,6 +271,11 @@ func validateDifferenceFlags() error {
 	return nil
 }
 
+// configPassed reports whether --config was set; its default is "not-set".
+func configPassed() bool {
+	return configPath != "" && configPath != "not-set"
+}
+
 // destinationPassed reports whether --destination was set; its default is "not-set".
 func destinationPassed() bool {
 	return destinationConfigPath != "" && destinationConfigPath != "not-set"

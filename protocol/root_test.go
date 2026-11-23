@@ -230,6 +230,47 @@ func TestLoadDestinationConfig(t *testing.T) {
 	}
 }
 
+func TestMissingConfigFlagPreRun(t *testing.T) {
+	testCases := []struct {
+		name string
+		path string
+	}{
+		{name: "flag default not-set", path: "not-set"},
+		{name: "empty path", path: ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetCatalogFlags(t)
+			prevConfig, prevDest, prevStreams := configPath, destinationConfigPath, streamsPath
+			prevDiff, prevDiffAvail, prevDiffSel := differencePath, differenceAvailableStreamsPath, differenceSelectedStreamsPath
+			prevConvert := convertStreams
+			t.Cleanup(func() {
+				configPath, destinationConfigPath, streamsPath = prevConfig, prevDest, prevStreams
+				differencePath, differenceAvailableStreamsPath, differenceSelectedStreamsPath = prevDiff, prevDiffAvail, prevDiffSel
+				convertStreams = prevConvert
+			})
+
+			configPath = tc.path
+			destinationConfigPath = "not-set"
+			streamsPath = "streams.json"
+			differencePath, differenceAvailableStreamsPath, differenceSelectedStreamsPath = "", "", ""
+			convertStreams = false
+
+			syncErr := syncCmd.PersistentPreRunE(syncCmd, nil)
+			require.Error(t, syncErr)
+			assert.Contains(t, syncErr.Error(), "--config not passed")
+			assert.Equal(t, codeFlagMissing, errs.From(errs.Classify(syncErr)).Code)
+
+			streamsPath = ""
+			discoverErr := discoverCmd.PreRunE(discoverCmd, nil)
+			require.Error(t, discoverErr)
+			assert.Contains(t, discoverErr.Error(), "--config not passed")
+			assert.Equal(t, codeFlagMissing, errs.From(errs.Classify(discoverErr)).Code)
+		})
+	}
+}
+
 // runUnderRecover runs body with recoverToError deferred over an error that starts as prior.
 // It reports the error a caller would be left with and the value that continued unwinding.
 func runUnderRecover(prior error, body func()) (panicked any, err error) {
