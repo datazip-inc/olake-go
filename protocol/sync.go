@@ -36,7 +36,7 @@ var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Olake sync command",
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) (err error) {
-		if configPath == "" {
+		if !configPassed() {
 			return errs.Precondition(errs.ConfigInvalid, codeFlagMissing, fmt.Errorf("--config not passed"))
 		} else if err := validateCatalogFlags(true); err != nil {
 			return err
