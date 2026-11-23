@@ -6,6 +6,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestValidateHiveClientCount(t *testing.T) {
+	for _, clients := range []int{0, -1, 1} {
+		cfg := Config{
+			CatalogType:   HiveCatalog,
+			IcebergS3Path: "s3://test/warehouse",
+			HiveURI:       "thrift://localhost:9083",
+			HiveClients:   clients,
+			JarPath:       "test.jar",
+			Region:        "us-east-1",
+		}
+		err := cfg.Validate()
+		if clients > 0 {
+			assert.NoError(t, err)
+		} else {
+			assert.ErrorContains(t, err, "hive_clients")
+		}
+	}
+}
+
 func TestIsValidTypeForColumn(t *testing.T) {
 	testCases := []struct {
 		name       string

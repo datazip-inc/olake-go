@@ -64,6 +64,11 @@ func TestConfigValidateStore(t *testing.T) {
 		wantErr string
 	}{
 		{
+			name:    "s3 bucket requires a region",
+			cfg:     &Config{Bucket: "my-bucket"},
+			wantErr: "s3_region",
+		},
+		{
 			name: "omitted storage_type is valid",
 			cfg: &Config{
 				Bucket: "my-bucket",
@@ -93,6 +98,16 @@ func TestConfigValidateStore(t *testing.T) {
 				c.StorageType = "azure"
 				c.AzureAuthType = azure.AuthSharedKey
 				c.AzureStorageAccountKey = "mykey"
+				return &c
+			}(),
+		},
+		{
+			name: "azure storage ignores a leftover S3 bucket without a region",
+			cfg: func() *Config {
+				c := azureCfg
+				c.AzureAuthType = azure.AuthSharedKey
+				c.AzureStorageAccountKey = "mykey"
+				c.Bucket = "old-bucket"
 				return &c
 			}(),
 		},

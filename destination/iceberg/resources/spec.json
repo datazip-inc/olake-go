@@ -137,6 +137,7 @@
                 },
                 "hive_clients": {
                   "type": "integer",
+                  "minimum": 1,
                   "title": "Hive Clients",
                   "description": "Number of Hive clients allocated to handle connections to the Hive Metastore"
                 },
