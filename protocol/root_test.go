@@ -230,6 +230,76 @@ func TestLoadDestinationConfig(t *testing.T) {
 	}
 }
 
+func TestConfigPassed(t *testing.T) {
+	testCases := []struct {
+		name   string
+		path   string
+		passed bool
+	}{
+		{name: "flag default", path: "not-set", passed: false},
+		{name: "empty path", path: "", passed: false},
+		{name: "explicit path", path: "/path/to/config.json", passed: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			prevPath := configPath
+			t.Cleanup(func() { configPath = prevPath })
+			configPath = tc.path
+
+			assert.Equal(t, tc.passed, configPassed())
+		})
+	}
+}
+
+func TestMissingConfigFlag(t *testing.T) {
+	testCases := []struct {
+		name string
+		path string
+	}{
+		{name: "flag default", path: "not-set"},
+		{name: "empty path", path: ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run("sync/"+tc.name, func(t *testing.T) {
+			prevConfig := configPath
+			t.Cleanup(func() { configPath = prevConfig })
+			configPath = tc.path
+
+			err := syncCmd.PersistentPreRunE(syncCmd, nil)
+			require.Error(t, err)
+			assert.EqualError(t, err, "--config not passed")
+			got := errs.From(errs.Classify(err))
+			assert.Equal(t, errs.ConfigInvalid, got.Category)
+			assert.Equal(t, codeFlagMissing, got.Code)
+		})
+
+		t.Run("discover/"+tc.name, func(t *testing.T) {
+			resetCatalogFlags(t)
+			prevConfig, prevDest, prevDestCfg := configPath, destinationConfigPath, destinationConfig
+			prevConvert := convertStreams
+			prevDiff, prevDiffAvail, prevDiffSel := differencePath, differenceAvailableStreamsPath, differenceSelectedStreamsPath
+			t.Cleanup(func() {
+				configPath, destinationConfigPath, destinationConfig = prevConfig, prevDest, prevDestCfg
+				convertStreams = prevConvert
+				differencePath, differenceAvailableStreamsPath, differenceSelectedStreamsPath = prevDiff, prevDiffAvail, prevDiffSel
+			})
+			configPath = tc.path
+			destinationConfigPath = "not-set"
+			convertStreams = false
+			differencePath, differenceAvailableStreamsPath, differenceSelectedStreamsPath = "", "", ""
+
+			err := discoverCmd.PreRunE(discoverCmd, nil)
+			require.Error(t, err)
+			assert.EqualError(t, err, "--config not passed")
+			got := errs.From(errs.Classify(err))
+			assert.Equal(t, errs.ConfigInvalid, got.Category)
+			assert.Equal(t, codeFlagMissing, got.Code)
+		})
+	}
+}
+
 // runUnderRecover runs body with recoverToError deferred over an error that starts as prior.
 // It reports the error a caller would be left with and the value that continued unwinding.
 func runUnderRecover(prior error, body func()) (panicked any, err error) {

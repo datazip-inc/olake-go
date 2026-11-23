@@ -45,7 +45,7 @@ var discoverCmd = &cobra.Command{
 			return nil
 		}
 
-		if configPath == "" {
+		if !configPassed() {
 			return errs.Precondition(errs.ConfigInvalid, codeFlagMissing, fmt.Errorf("--config not passed"))
 		}
 
