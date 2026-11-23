@@ -109,6 +109,7 @@
             },
             "private_key": {
               "type": "string",
+              "format": "password",
               "title": "SSH Private Key",
               "description": "SSH private key to authenticate with the SSH server"
             },

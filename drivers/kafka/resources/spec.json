@@ -41,6 +41,7 @@
                         },
                         "sasl_jaas_config": {
                             "type": "string",
+                            "format": "password",
                             "title": "SASL JAAS Config",
                             "description": "JAAS configuration string (e.g., org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user\" password=\"pass\";)",
                             "minLength": 1
@@ -71,6 +72,7 @@
                         },
                         "sasl_jaas_config": {
                             "type": "string",
+                            "format": "password",
                             "title": "SASL JAAS Config",
                             "description": "JAAS configuration string (e.g., org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user\" password=\"pass\";)",
                             "minLength": 1
@@ -125,6 +127,7 @@
                                                 },
                                                 "client_key": {
                                                     "type": "string",
+                                                    "format": "password",
                                                     "title": "Client Key",
                                                     "description": "Client private key content for mTLS authentication in PEM format",
                                                     "multiline": true
@@ -221,6 +224,7 @@
                                                 },
                                                 "client_key": {
                                                     "type": "string",
+                                                    "format": "password",
                                                     "title": "Client Key",
                                                     "description": "Client private key content for mTLS authentication in PEM format",
                                                     "multiline": true
@@ -370,6 +374,7 @@
                                                 },
                                                 "password": {
                                                     "type": "string",
+                                                    "format": "password",
                                                     "title": "Password",
                                                     "description": "Password for Schema Registry authentication",
                                                     "minLength": 1
@@ -387,6 +392,7 @@
                                                 },
                                                 "bearer_token": {
                                                     "type": "string",
+                                                    "format": "password",
                                                     "title": "Bearer Token",
                                                     "description": "Bearer token for Schema Registry authentication",
                                                     "minLength": 1

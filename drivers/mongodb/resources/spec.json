@@ -152,6 +152,7 @@
                                                 },
                                                 "client_key": {
                                                     "type": "string",
+                                                    "format": "password",
                                                     "title": "Client Key",
                                                     "description": "Client private key content (PEM format) for mutual TLS authentication"
                                                 }
@@ -231,6 +232,7 @@
                                                 },
                                                 "client_key": {
                                                     "type": "string",
+                                                    "format": "password",
                                                     "title": "Client Key",
                                                     "description": "Client private key content (PEM format) for mutual TLS authentication"
                                                 }
@@ -350,6 +352,7 @@
                         },
                         "private_key": {
                             "type": "string",
+                            "format": "password",
                             "title": "SSH Private Key",
                             "description": "SSH private key to authenticate with the SSH server"
                         },
@@ -421,7 +424,7 @@
                         "use_iam": {
                             "const": false
                         },
-                        "password": { "type": "string", "minLength": 1 }
+                        "password": { "type": "string", "format": "password", "minLength": 1 }
                     },
                     "required": [
                         "authdb",
