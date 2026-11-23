@@ -24,6 +24,8 @@ const (
 	codePortInvalid             = "postgres.port_invalid"
 	codeDatabaseMissing         = "postgres.database_missing"
 	codeSchemaBlank             = "postgres.schema_blank"
+	codeUsernameMissing         = "postgres.username_missing"
+	codePasswordMissing         = "postgres.password_missing"
 )
 
 // sqlStateCategories maps a PostgreSQL SQLSTATE to a failure category. SQLSTATE rather than the

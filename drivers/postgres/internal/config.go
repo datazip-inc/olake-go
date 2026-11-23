@@ -57,6 +57,15 @@ func (c *Config) Validate() error {
 			fmt.Errorf("database name is required"))
 	}
 
+	if c.Username == "" {
+		return errs.Precondition(errs.ConfigInvalid, codeUsernameMissing,
+			fmt.Errorf("username is required"))
+	}
+	if c.Password == "" {
+		return errs.Precondition(errs.ConfigInvalid, codePasswordMissing,
+			fmt.Errorf("password is required"))
+	}
+
 	if err := utils.ApplyMaxThreadsDefault(&c.MaxThreads); err != nil {
 		return err
 	}
