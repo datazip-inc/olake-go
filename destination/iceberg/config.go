@@ -167,6 +167,10 @@ func (c *Config) Validate() error {
 			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
 				fmt.Errorf("hive_uri is required when using Hive catalog"))
 		}
+		if c.HiveClients < 1 {
+			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+				fmt.Errorf("hive_clients must be greater than zero when using Hive catalog"))
+		}
 	case GlueCatalog:
 		// No additional validation required for Glue catalog
 	default:

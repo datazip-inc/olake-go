@@ -70,6 +70,9 @@ func (c *Config) Validate() error {
 	case "azure":
 		return c.validateAzureAuthenticationType()
 	case "", "s3":
+		if c.Bucket != "" && c.Region == "" {
+			return fmt.Errorf("s3_region is required when s3_bucket is set")
+		}
 		return nil
 	default:
 		return fmt.Errorf("storage_type must be %q or %q", storageTypeS3, storageTypeAzure)
