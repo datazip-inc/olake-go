@@ -64,11 +64,16 @@ func (f ChangeFilter) FilterRowsEvent(ctx context.Context, e *replication.RowsEv
 	}
 
 	var operationType string
+	var primaryKeys []string
+	rowStep := 1
 	switch ev.Header.EventType {
 	case replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		operationType = "insert"
 	case replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		operationType = "update"
+		// Update rows are pairs of before and after images.
+		rowStep = 2
+		primaryKeys = stream.GetStream().SourceDefinedPrimaryKey.Array()
 	case replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		operationType = "delete"
 	default:
@@ -78,12 +83,6 @@ func (f ChangeFilter) FilterRowsEvent(ctx context.Context, e *replication.RowsEv
 	view, err := f.resolveColumns(ctx, e)
 	if err != nil {
 		return err
-	}
-
-	rowStep := 1
-	if operationType == "update" {
-		// Update rows are pairs of before and after images.
-		rowStep = 2
 	}
 
 	// Use microsecond-precision timestamp from GTID event (MySQL 8.0.1+) if available,
@@ -96,7 +95,6 @@ func (f ChangeFilter) FilterRowsEvent(ctx context.Context, e *replication.RowsEv
 		return callback(ctx, change)
 	}
 
-	primaryKeys := stream.GetStream().SourceDefinedPrimaryKey.Array()
 	for i := rowStep - 1; i < len(e.Rows); i += rowStep {
 		row := e.Rows[i]
 		record, err := convertRowToMap(row, view, f.converter)

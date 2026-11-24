@@ -109,42 +109,44 @@ func filterWithCache(meta *tableMeta) ChangeFilter {
 }
 
 func TestChangeFilter_PrimaryKeyChanged(t *testing.T) {
-	filter := filterWithCache(nil)
+	defer func(version int) { constants.LoadedStateVersion = version }(constants.LoadedStateVersion)
+	constants.LoadedStateVersion = 8
+	table := fullTableMap()
+	binaryTable := fullTableMap()
+	binaryTable.ColumnType[1] = mysql.MYSQL_TYPE_STRING
+	binaryTable.ColumnMeta[1] = stringColumnMeta(4)
+	binaryTable.DefaultCharset = []uint64{63}
+
 	before := []any{int64(1), "before", int64(1), int64(3)}
-	view, err := filter.resolveColumns(t.Context(), &replication.RowsEvent{Table: fullTableMap()})
-	require.NoError(t, err)
-	for _, tc := range []struct {
-		name  string
-		keys  []string
-		after map[string]any
-		want  bool
+	newID := []any{int64(2), "before", int64(1), int64(3)}
+	newName := []any{int64(1), "after", int64(1), int64(3)}
+	testCases := []struct {
+		name     string
+		table    *replication.TableMapEvent
+		keys     []string
+		old, new []any
+		want     bool
 	}{
-		{"single key changes", []string{"id"}, map[string]any{"id": int64(2)}, true},
-		{"payload changes", []string{"id"}, map[string]any{"id": int64(1), "name": "after"}, false},
-		{"second key changes", []string{"id", "name"}, map[string]any{"id": int64(1), "name": "after"}, true},
-		{"same decoded enum", []string{"status"}, map[string]any{"status": "active"}, false},
-		{"no primary key", nil, map[string]any{"id": int64(2)}, false},
-	} {
+		{"single key changes", table, []string{"id"}, before, newID, true},
+		{"second key component changes", table, []string{"id", "name"}, before, newName, true},
+		{"payload changes", table, []string{"id"}, before, newName, false},
+		{"same decoded enum", table, []string{"status"}, before, newName, false},
+		{"no primary key", table, nil, before, newID, false},
+		{"binary key compares the padded value", binaryTable, []string{"name"}, []any{int64(1), "x", int64(1), int64(3)}, []any{int64(1), "x\x00", int64(1), int64(3)}, false},
+	}
+
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			changed, err := filter.primaryKeyChanged(view, before, tc.after, tc.keys)
+			filter := filterWithCache(nil)
+			view, err := filter.resolveColumns(t.Context(), &replication.RowsEvent{Table: tc.table})
+			require.NoError(t, err)
+			record, err := convertRowToMap(tc.new, view, filter.converter)
+			require.NoError(t, err)
+			changed, err := filter.primaryKeyChanged(view, tc.old, record, tc.keys)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, changed)
 		})
 	}
-
-	t.Run("binary key compares the padded value", func(t *testing.T) {
-		defer func(version int) { constants.LoadedStateVersion = version }(constants.LoadedStateVersion)
-		constants.LoadedStateVersion = 8
-		table := fullTableMap()
-		table.ColumnType[1] = mysql.MYSQL_TYPE_STRING
-		table.ColumnMeta[1] = stringColumnMeta(4)
-		table.DefaultCharset = []uint64{63}
-		view, err := filter.resolveColumns(t.Context(), &replication.RowsEvent{Table: table})
-		require.NoError(t, err)
-		changed, err := filter.primaryKeyChanged(view, []any{1, "x", 1, 3}, map[string]any{"name": []byte{'x', 0, 0, 0}}, []string{"name"})
-		require.NoError(t, err)
-		assert.False(t, changed)
-	})
 }
 
 func TestChangeFilter_FilterRowsEvent(t *testing.T) {
@@ -158,38 +160,40 @@ func TestChangeFilter_FilterRowsEvent(t *testing.T) {
 		{int64(2), "after", int64(1), int64(3)}, {int64(2), "later", int64(1), int64(3)},
 	}}
 
-	t.Run("delete old key before the update", func(t *testing.T) {
-		var changes []abstract.CDCChange
-		err := filter.FilterRowsEvent(t.Context(), rows, event, position, func(_ context.Context, change abstract.CDCChange) error {
-			changes = append(changes, change)
-			return nil
-		})
-		require.NoError(t, err)
-		require.Len(t, changes, 3)
-		for i, want := range []struct {
-			kind  string
-			id    int64
-			name  string
-			bytes int64
-		}{{"delete", 1, "before", 16}, {"update", 2, "after", 15}, {"update", 2, "later", 15}} {
-			assert.Equal(t, want.kind, changes[i].Kind)
-			assert.Equal(t, map[string]any{"id": want.id, "name": want.name, "status": "active", "tags": "a,b"}, changes[i].Data)
-			assert.Equal(t, want.bytes, changes[i].Bytes)
-			assert.Equal(t, filter.lastGTIDEvent, changes[i].Timestamp)
-			assert.Equal(t, map[string]any{CDCBinlogFileName: position.Name, CDCBinlogFilePos: position.Pos}, changes[i].ExtraColumns)
-		}
-	})
+	type change struct {
+		kind  string
+		id    int64
+		name  string
+		bytes int64
+	}
+	changes := []change{{"delete", 1, "before", 16}, {"update", 2, "after", 15}, {"update", 2, "later", 15}}
+	testCases := []struct {
+		name        string
+		callbackErr error
+		want        []change
+	}{
+		{"delete old key before the update", nil, changes},
+		{"failed delete stops the update", errors.New("destination write failed"), changes[:1]},
+	}
 
-	t.Run("failed delete stops the update", func(t *testing.T) {
-		failure := errors.New("destination write failed")
-		var kinds []string
-		err := filter.FilterRowsEvent(t.Context(), rows, event, position, func(_ context.Context, change abstract.CDCChange) error {
-			kinds = append(kinds, change.Kind)
-			return failure
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []abstract.CDCChange
+			err := filter.FilterRowsEvent(t.Context(), rows, event, position, func(_ context.Context, change abstract.CDCChange) error {
+				got = append(got, change)
+				return tc.callbackErr
+			})
+			require.ErrorIs(t, err, tc.callbackErr)
+			require.Len(t, got, len(tc.want))
+			for i, want := range tc.want {
+				assert.Equal(t, want.kind, got[i].Kind)
+				assert.Equal(t, map[string]any{"id": want.id, "name": want.name, "status": "active", "tags": "a,b"}, got[i].Data)
+				assert.Equal(t, want.bytes, got[i].Bytes)
+				assert.Equal(t, filter.lastGTIDEvent, got[i].Timestamp)
+				assert.Equal(t, map[string]any{CDCBinlogFileName: position.Name, CDCBinlogFilePos: position.Pos}, got[i].ExtraColumns)
+			}
 		})
-		require.ErrorIs(t, err, failure)
-		assert.Equal(t, []string{"delete"}, kinds)
-	})
+	}
 }
 
 // TestResolveColumnsFallbackMatchesBinlogMetadata is the core guarantee: a row decodes

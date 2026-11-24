@@ -63,7 +63,10 @@ func mysqlSyncConfig(t *testing.T, opts ...testutils.TestConfigOption) *integrat
 
 func TestMySQLSync(t *testing.T) {
 	t.Parallel()
-	mysqlSyncConfig(t).TestSync(t)
+	cfg := mysqlSyncConfig(t)
+	cfg.PrimaryKeyUpdates = primaryKeyUpdates
+	cfg.PrimaryKeyMarkerColumn = "id_cursor"
+	cfg.TestSync(t)
 }
 
 // TestMySQLBinarySync keys, partitions and filters on binary columns. The filter cases use the binary cursor so

@@ -86,7 +86,10 @@ func postgresSyncConfig(t *testing.T, opts ...testutils.TestConfigOption) *integ
 
 func TestPostgresSync(t *testing.T) {
 	t.Parallel()
-	postgresSyncConfig(t).TestSync(t)
+	cfg := postgresSyncConfig(t)
+	cfg.PrimaryKeyUpdates = primaryKeyUpdates
+	cfg.PrimaryKeyMarkerColumn = "col_cursor"
+	cfg.TestSync(t)
 }
 
 // TestPostgresDecimalSync partitions and filters on a NUMERIC(18,4) column that evolve-schema widens to NUMERIC(20,4).

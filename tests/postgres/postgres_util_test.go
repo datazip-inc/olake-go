@@ -21,6 +21,38 @@ const (
 	cdcPublicationName = "performance_publication"
 )
 
+var primaryKeyUpdates = []integration.PrimaryKeyUpdate{
+	{
+		Name:        "CDC - primary key update",
+		Operation:   "update_primary_key",
+		WantOpTypes: map[string]string{"2": "d", "3": "r", "4": "r", "101": "u"},
+		WantMarkers: map[string]string{"3": "3", "4": "4", "101": "2"},
+	},
+	{
+		Name:        "CDC - primary key reuse",
+		Operation:   "return_primary_key",
+		WantOpTypes: map[string]string{"2": "u", "3": "r", "4": "r", "101": "d"},
+		WantMarkers: map[string]string{"2": "2", "3": "3", "4": "4"},
+	},
+	{
+		Name:        "CDC - primary key swap",
+		Operation:   "swap_primary_keys",
+		WantOpTypes: map[string]string{"2": "u", "3": "u", "4": "r", "101": "d"},
+		WantMarkers: map[string]string{"2": "3", "3": "2", "4": "4"},
+	},
+	{
+		Name:        "CDC - primary key shift",
+		Operation:   "shift_primary_keys",
+		WantOpTypes: map[string]string{"2": "d", "3": "u", "4": "u", "101": "d"},
+		WantMarkers: map[string]string{"3": "3", "4": "2"},
+	},
+	{
+		Name:        "CDC - resume after primary key changes",
+		WantOpTypes: map[string]string{"2": "d", "3": "u", "4": "u", "101": "d"},
+		WantMarkers: map[string]string{"3": "3", "4": "2"},
+	},
+}
+
 // performanceCDCStreams is the CDC stream set the performance suite drives, shared between the
 // performance.TestHandler config and the perf operations below.
 var performanceCDCStreams = []string{"trips_cdc", "fhv_trips_cdc"}

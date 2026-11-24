@@ -23,7 +23,8 @@ type TestHandler struct {
 	// icebergDestination is the destination config the next iceberg sync runs against, which is how
 	// IcebergWriter selects between the legacy and the arrow writer.
 	icebergDestination               string
-	testPrimaryKeyChanges            bool
+	PrimaryKeyUpdates                []PrimaryKeyUpdate
+	PrimaryKeyMarkerColumn           string
 	ExpectedData                     map[string]interface{}
 	ExpectedUpdatedData              map[string]interface{}
 	ExpectedCDCUpdatedData           map[string]interface{} // expected row after the CDC update when CDC leaves columns out; nil means use ExpectedUpdatedData
@@ -156,12 +157,21 @@ func (th *TestHandler) IcebergWriter(
 	return testFunc(ctx, t, testTable)
 }
 
+// PrimaryKeyUpdate describes the rows a driver expects after a key change.
+type PrimaryKeyUpdate struct {
+	Name        string
+	Operation   string
+	WantOpTypes map[string]string
+	WantMarkers map[string]string // the source row that should be live at each key
+}
+
 type syncTestCase struct {
 	name                     string
 	operation                string
 	useState                 bool
 	opSymbol                 string
 	expected                 map[string]interface{}
+	primaryKeyUpdate         *PrimaryKeyUpdate
 	preSetup                 []func(*testutils.TestConfig) error // host-side actions executed before the sync
 	verifyNoDuplicates       bool                                // if true, assert COUNT(*) == COUNT(DISTINCT _olake_id) after sync
 	expectedRowCountByOpType int64                               // when > 0, assert COUNT(DISTINCT _olake_id) == this value (catches over-sync and under-sync)

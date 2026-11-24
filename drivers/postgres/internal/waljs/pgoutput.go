@@ -243,7 +243,7 @@ func (p *pgoutputReplicator) emitUpdate(ctx context.Context, m *pglogrepl.Update
 
 	changed, err := p.primaryKeyChanged(rel, m, stream.GetStream().SourceDefinedPrimaryKey.Array(), values)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to compare primary key in stream %s: %w", stream.ID(), err)
 	}
 	if changed {
 		// TODO: handle deferred primary key changes across a whole transaction.
@@ -266,7 +266,7 @@ func (p *pgoutputReplicator) primaryKeyChanged(rel *pglogrepl.RelationMessage, m
 	changed := false
 	for _, key := range keys {
 		i := slices.IndexFunc(rel.Columns, func(col *pglogrepl.RelationMessageColumn) bool { return col.Name == key })
-		if i < 0 || i >= len(m.OldTuple.Columns) || m.OldTuple.Columns[i].Data == nil {
+		if i < 0 || m.OldTuple.Columns[i].Data == nil {
 			return false, nil
 		}
 		newCol := m.NewTuple.Columns[i]

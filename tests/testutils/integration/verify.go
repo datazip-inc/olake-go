@@ -197,6 +197,33 @@ func VerifyIcebergSync(t *testing.T, tableName, icebergDB string, datatypeSchema
 	t.Logf("Verified partition column: %s", expectedCol)
 }
 
+func (th *TestHandler) verifyPrimaryKeyUpdate(ctx context.Context, t *testing.T, testTable string, update *PrimaryKeyUpdate) {
+	t.Helper()
+	spark := getSparkSession(ctx, t)
+	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.DestinationDB, testTable)
+	refreshTable(ctx, t, spark, fullTableName)
+
+	ids := make([]string, 0, len(update.WantOpTypes))
+	for id := range update.WantOpTypes {
+		ids = append(ids, "'"+id+"'")
+	}
+	df, err := spark.Sql(ctx, fmt.Sprintf("SELECT _olake_id, _op_type, %s FROM %s WHERE _olake_id IN (%s)", th.PrimaryKeyMarkerColumn, fullTableName, strings.Join(ids, ",")))
+	require.NoError(t, err)
+	rows, err := df.Collect(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, len(update.WantOpTypes), "one destination row per key")
+
+	got := make(map[string]string, len(rows))
+	for _, row := range rows {
+		id := fmt.Sprint(row.Value("_olake_id"))
+		got[id] = fmt.Sprint(row.Value("_op_type"))
+		if marker, ok := update.WantMarkers[id]; ok {
+			require.Equalf(t, marker, fmt.Sprint(row.Value(th.PrimaryKeyMarkerColumn)), "source row at key %s", id)
+		}
+	}
+	require.Equal(t, update.WantOpTypes, got)
+}
+
 // VerifyIcebergNoDuplicates asserts that no duplicate _olake_id values exist for the given
 // _op_type in the Iceberg table.
 func VerifyIcebergNoDuplicates(ctx context.Context, t *testing.T, tableName, icebergDB, opSymbol string, expectedRowCountByOpType int64) {

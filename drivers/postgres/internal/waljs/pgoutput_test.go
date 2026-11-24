@@ -98,87 +98,89 @@ func TestPgoutputReplicator_EmitUpdate(t *testing.T) {
 	toast := &pglogrepl.TupleDataColumn{DataType: pglogrepl.TupleDataTypeToast}
 	null := &pglogrepl.TupleDataColumn{DataType: pglogrepl.TupleDataTypeNull}
 	next := testTuple(textColumn("2"), toast)
+	oldRow := testTuple(textColumn("1"), textColumn("east"))
+	oldKey := testTuple(textColumn("1"), null)
 
-	for _, tt := range []struct {
-		name        string
-		oldType     byte
-		old         *pglogrepl.TupleData
-		region      string
+	type change struct {
+		kind        string
+		data        map[string]any
 		unavailable []string
+	}
+	fullChanges := []change{
+		{"delete", map[string]any{"id": 1.0, "region": "east"}, nil},
+		{"update", map[string]any{"id": 2.0, "region": "east"}, nil},
+	}
+	keyChanges := []change{
+		{"delete", map[string]any{"id": 1.0, "region": nil}, nil},
+		{"update", map[string]any{"id": 2.0, "region": constants.UnavailableValue}, []string{"region"}},
+	}
+	writeErr := errors.New("destination write failed")
+	testCases := []struct {
+		name      string
+		oldType   byte
+		old       *pglogrepl.TupleData
+		failOn    string
+		want      []change
+		wantError string
 	}{
-		{"FULL supplies old region", 'O', testTuple(textColumn("1"), textColumn("east")), "east", nil},
-		{"DEFAULT supplies only old key", 'K', testTuple(textColumn("1"), null), constants.UnavailableValue, []string{"region"}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			msg := &pglogrepl.UpdateMessage{RelationID: 1, OldTupleType: tt.oldType, OldTuple: tt.old, NewTuple: next}
+		{name: "FULL supplies old region", oldType: 'O', old: oldRow, want: fullChanges},
+		{name: "DEFAULT supplies only old key", oldType: 'K', old: oldKey, want: keyChanges},
+		{name: "ordinary update emits one event", want: keyChanges[1:]},
+		{name: "failed delete stops the update", oldType: 'K', old: oldKey, failOn: "delete", want: keyChanges[:1]},
+		{name: "failed update propagates the error", oldType: 'K', old: oldKey, failOn: "update", want: keyChanges},
+		{name: "old key conversion fails before delivery", oldType: 'K', old: testTuple(textColumn("invalid"), null), wantError: "failed to compare primary key in stream public.orders"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := &pglogrepl.UpdateMessage{RelationID: 1, OldTupleType: tc.oldType, OldTuple: tc.old, NewTuple: next}
+			var got []change
+			err := p.emitUpdate(t.Context(), msg, func(_ context.Context, event abstract.CDCChange) error {
+				got = append(got, change{event.Kind, event.Data, event.UnavailableColumns})
+				if event.Kind == tc.failOn {
+					return writeErr
+				}
+				return nil
+			})
+			switch {
+			case tc.failOn != "":
+				require.ErrorIs(t, err, writeErr)
+			case tc.wantError != "":
+				require.ErrorContains(t, err, tc.wantError)
+			default:
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestPgoutputReplicator_EmitDelete(t *testing.T) {
+	p := newTestPgoutputReplicator("id")
+	null := &pglogrepl.TupleDataColumn{DataType: pglogrepl.TupleDataTypeNull}
+	testCases := []struct {
+		name string
+		old  *pglogrepl.TupleData
+		want map[string]any
+	}{
+		{"DEFAULT supplies the old key", testTuple(textColumn("1"), null), map[string]any{"id": 1.0, "region": nil}},
+		{"INDEX supplies region without the primary key", testTuple(null, textColumn("east")), map[string]any{"id": nil, "region": "east"}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := &pglogrepl.DeleteMessage{RelationID: 1, OldTupleType: 'K', OldTuple: tc.old}
 			var changes []abstract.CDCChange
-			err := p.emitUpdate(t.Context(), msg, func(_ context.Context, change abstract.CDCChange) error {
+			err := p.emitDelete(t.Context(), msg, func(_ context.Context, change abstract.CDCChange) error {
 				changes = append(changes, change)
 				return nil
 			})
 			require.NoError(t, err)
-			require.Len(t, changes, 2)
+			require.Len(t, changes, 1)
 			assert.Equal(t, "delete", changes[0].Kind)
-			assert.Equal(t, 1.0, changes[0].Data["id"])
-			assert.Equal(t, "update", changes[1].Kind)
-			assert.Equal(t, map[string]any{"id": 2.0, "region": tt.region}, changes[1].Data)
-			assert.Equal(t, tt.unavailable, changes[1].UnavailableColumns)
+			assert.Equal(t, tc.want, changes[0].Data)
 		})
 	}
-
-	t.Run("ordinary update emits one event", func(t *testing.T) {
-		msg := &pglogrepl.UpdateMessage{RelationID: 1, NewTuple: next}
-		var kinds []string
-		err := p.emitUpdate(t.Context(), msg, func(_ context.Context, change abstract.CDCChange) error {
-			kinds = append(kinds, change.Kind)
-			return nil
-		})
-		require.NoError(t, err)
-		assert.Equal(t, []string{"update"}, kinds)
-	})
-
-	for _, failKind := range []string{"delete", "update"} {
-		t.Run("failed "+failKind+" stops delivery", func(t *testing.T) {
-			failure := errors.New("destination write failed")
-			msg := &pglogrepl.UpdateMessage{RelationID: 1, OldTuple: testTuple(textColumn("1"), null), NewTuple: next}
-			var kinds []string
-			err := p.emitUpdate(t.Context(), msg, func(_ context.Context, change abstract.CDCChange) error {
-				kinds = append(kinds, change.Kind)
-				if change.Kind == failKind {
-					return failure
-				}
-				return nil
-			})
-			require.ErrorIs(t, err, failure)
-			assert.Equal(t, failKind, kinds[len(kinds)-1])
-		})
-	}
-
-	t.Run("old key conversion fails before delivery", func(t *testing.T) {
-		msg := &pglogrepl.UpdateMessage{RelationID: 1, OldTuple: testTuple(textColumn("invalid"), null), NewTuple: next}
-		err := p.emitUpdate(t.Context(), msg, func(context.Context, abstract.CDCChange) error {
-			t.Fatal("unexpected change")
-			return nil
-		})
-		require.Error(t, err)
-	})
-}
-
-func TestPgoutputReplicator_EmitDelete(t *testing.T) {
-	// An identity index can supply region without the configured primary key.
-	p := newTestPgoutputReplicator("id")
-	msg := &pglogrepl.DeleteMessage{RelationID: 1, OldTupleType: 'K',
-		OldTuple: testTuple(&pglogrepl.TupleDataColumn{DataType: pglogrepl.TupleDataTypeNull}, textColumn("east")),
-	}
-	var changes []abstract.CDCChange
-	err := p.emitDelete(t.Context(), msg, func(_ context.Context, change abstract.CDCChange) error {
-		changes = append(changes, change)
-		return nil
-	})
-	require.NoError(t, err)
-	require.Len(t, changes, 1)
-	assert.Equal(t, "delete", changes[0].Kind)
-	assert.Equal(t, map[string]any{"id": nil, "region": "east"}, changes[0].Data)
 }
 
 func newTestPgoutputReplicator(keys ...string) *pgoutputReplicator {
