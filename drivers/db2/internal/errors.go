@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	codeCDCUnsupported  = "db2.cdc_unsupported"
-	codeHostMissing     = "db2.host_missing"
-	codePortInvalid     = "db2.port_invalid"
-	codeUsernameMissing = "db2.username_missing"
-	codeDatabaseMissing = "db2.database_missing"
+	codeCDCUnsupported     = "db2.cdc_unsupported"
+	codeHostMissing        = "db2.host_missing"
+	codeHostSchemeIncluded = "db2.host_scheme_included"
+	codePortInvalid        = "db2.port_invalid"
+	codeUsernameMissing    = "db2.username_missing"
+	codePasswordMissing    = "db2.password_missing"
+	codeDatabaseMissing    = "db2.database_missing"
 )
 
 // sqlStateCategories maps a Db2 SQLSTATE to a failure category. Two spaces arrive here: Db2's

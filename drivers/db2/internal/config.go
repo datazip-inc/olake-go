@@ -2,6 +2,7 @@ package driver
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/datazip-inc/olake/utils"
 	"github.com/datazip-inc/olake/utils/errs"
@@ -65,6 +66,9 @@ func (c *Config) BuildTunnelDSN(localPort int) string {
 func (c *Config) Validate() error {
 	if c.Host == "" {
 		return errs.Precondition(errs.ConfigInvalid, codeHostMissing, fmt.Errorf("empty host name"))
+	} else if strings.HasPrefix(strings.ToLower(c.Host), "http://") || strings.HasPrefix(strings.ToLower(c.Host), "https://") {
+		return errs.Precondition(errs.ConfigInvalid, codeHostSchemeIncluded,
+			fmt.Errorf("host should not contain http or https: %s", c.Host))
 	}
 
 	if c.Port <= 0 || c.Port > 65535 {
@@ -74,6 +78,10 @@ func (c *Config) Validate() error {
 
 	if c.Username == "" {
 		return errs.Precondition(errs.ConfigInvalid, codeUsernameMissing, fmt.Errorf("username is required"))
+	}
+
+	if c.Password == "" {
+		return errs.Precondition(errs.ConfigInvalid, codePasswordMissing, fmt.Errorf("password is required"))
 	}
 
 	if c.Database == "" {

@@ -75,6 +75,30 @@ func TestConfig_Validate(t *testing.T) {
 			expectErr: true,
 		},
 		{
+			// Rejects config with http scheme in host.
+			name: "invalid config - http scheme in host",
+			config: &Config{
+				Host:     "http://db2-host",
+				Port:     50000,
+				Database: "testdb",
+				Username: "db2inst1",
+				Password: "secret1234",
+			},
+			expectErr: true,
+		},
+		{
+			// Rejects config with https scheme in host.
+			name: "invalid config - https scheme in host",
+			config: &Config{
+				Host:     "https://db2-host",
+				Port:     50000,
+				Database: "testdb",
+				Username: "db2inst1",
+				Password: "secret1234",
+			},
+			expectErr: true,
+		},
+		{
 			// Rejects config with an invalid port number.
 			name: "invalid config - bad port",
 			config: &Config{
@@ -95,6 +119,18 @@ func TestConfig_Validate(t *testing.T) {
 				Database: "testdb",
 				Username: "",
 				Password: "secret1234",
+			},
+			expectErr: true,
+		},
+		{
+			// Rejects config with a missing password.
+			name: "invalid config - missing password",
+			config: &Config{
+				Host:     "db2-host",
+				Port:     50000,
+				Database: "testdb",
+				Username: "db2inst1",
+				Password: "",
 			},
 			expectErr: true,
 		},
