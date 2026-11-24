@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/datazip-inc/olake/drivers/abstract"
 	"github.com/datazip-inc/olake/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -350,4 +351,10 @@ func TestFilterFilesByCursor(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSupportedWriteModes checks that discover offers only append for S3 streams (#1434).
+func TestSupportedWriteModes(t *testing.T) {
+	driver := abstract.NewAbstractDriver(context.Background(), &S3{})
+	assert.Equal(t, []types.WriteMode{types.WriteModeAppend}, types.AvailableWriteModes(types.Iceberg, driver.SupportedWriteModes()))
 }
