@@ -172,7 +172,7 @@ For a detailed walkthrough, refer to the [Jobs documentation](https://olake.io/d
 
 ### 🛠️ CLI Usage (Advanced)
 
-For advanced users and automation, OLake Go's core logic is exposed via a powerful CLI. The core framework handles state management, configuration validation, logging, and type detection. It interacts with drivers using five main commands::
+For advanced users and automation, OLake Go's core logic is exposed via a powerful CLI. The core framework handles state management, configuration validation, logging, and type detection. It interacts with drivers using five main commands:
 
 - `spec`: Returns a render-able JSON Schema for a connector's configuration.
 - `check`: Validates connection configurations for sources and destinations.
