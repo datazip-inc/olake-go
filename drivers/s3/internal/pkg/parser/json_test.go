@@ -203,6 +203,31 @@ func TestJSONParser_StreamRecords_TypeConsistency(t *testing.T) {
 	}
 }
 
+func TestJSONParser_StreamRecords_MalformedJSONLReturnsRecordError(t *testing.T) {
+	jsonlData := `{"id": 1, "name": "Alice"}
+{"id": invalid, "name": "Broken"}
+{"id": 3, "name": "Charlie"}`
+
+	baseCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &cancelAfterDoneChecks{
+		Context:           baseCtx,
+		cancel:            cancel,
+		checksUntilCancel: 3,
+	}
+
+	parser := NewJSONParser(JSONConfig{LineDelimited: true}, types.NewStream("test", "test", nil))
+	var records []map[string]any
+	err := parser.StreamRecords(ctx, strings.NewReader(jsonlData), func(_ context.Context, record map[string]any) error {
+		records = append(records, record)
+		return nil
+	})
+
+	require.ErrorContains(t, err, "JSON record 2")
+	require.Len(t, records, 1)
+	assert.Equal(t, float64(1), records[0]["id"])
+}
+
 func TestJSONParser_InferSchema_NullableFields(t *testing.T) {
 	// Fields that don't appear in all records should be nullable
 	jsonlData := `{"id": 1, "name": "Alice"}
@@ -231,4 +256,18 @@ func TestJSONParser_InferSchema_NullableFields(t *testing.T) {
 	nameType, err := result.Schema.GetType("name")
 	require.NoError(t, err)
 	assert.Equal(t, types.String, nameType, "name should be String")
+}
+
+type cancelAfterDoneChecks struct {
+	context.Context
+	cancel            context.CancelFunc
+	checksUntilCancel int
+}
+
+func (c *cancelAfterDoneChecks) Done() <-chan struct{} {
+	c.checksUntilCancel--
+	if c.checksUntilCancel == 0 {
+		c.cancel()
+	}
+	return c.Context.Done()
 }
