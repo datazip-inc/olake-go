@@ -191,6 +191,28 @@ func TestValidateDifferenceFlags(t *testing.T) {
 	}
 }
 
+func TestConfigPassed(t *testing.T) {
+	testCases := []struct {
+		name   string
+		path   string
+		passed bool
+	}{
+		{name: "flag default", path: "not-set"},
+		{name: "empty path", path: ""},
+		{name: "valid config", path: "config.json", passed: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			prevPath := configPath
+			t.Cleanup(func() { configPath = prevPath })
+			configPath = tc.path
+
+			assert.Equal(t, tc.passed, configPassed())
+		})
+	}
+}
+
 // --destination is optional for discover, so an absent flag must leave an empty config (its
 // empty type compares every field) rather than fail; sync and clear-destination check
 // destinationPassed themselves.

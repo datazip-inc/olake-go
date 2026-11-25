@@ -276,6 +276,11 @@ func destinationPassed() bool {
 	return destinationConfigPath != "" && destinationConfigPath != "not-set"
 }
 
+// configPassed reports whether --config was set; its default is "not-set".
+func configPassed() bool {
+	return configPath != "" && configPath != "not-set"
+}
+
 // loadDestinationConfig fills destinationConfig from --destination; left empty when the flag
 // was not passed. Only the config is read, the destination is never reached.
 func loadDestinationConfig() error {
