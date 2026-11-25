@@ -351,3 +351,11 @@ func TestFilterFilesByCursor(t *testing.T) {
 		})
 	}
 }
+
+// TestSupportedWriteModes verifies that S3 source supports append only.
+func TestSupportedWriteModes(t *testing.T) {
+	s := &S3{}
+	modes := s.SupportedWriteModes()
+
+	require.Equal(t, []types.WriteMode{types.WriteModeAppend}, modes)
+}

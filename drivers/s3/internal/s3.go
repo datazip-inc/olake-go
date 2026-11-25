@@ -412,6 +412,11 @@ func getDecompressedReader(body io.ReadCloser, key string) (io.ReadCloser, error
 	return body, nil
 }
 
+// SupportedWriteModes returns the write modes supported by the S3 source.
+func (s *S3) SupportedWriteModes() []types.WriteMode {
+	return []types.WriteMode{types.WriteModeAppend}
+}
+
 // CloseConnection closes the S3 client connection
 func (s *S3) CloseConnection() {
 	logger.Info("Closing S3 connection")
