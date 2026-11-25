@@ -23,6 +23,12 @@ var checkCmd = &cobra.Command{
 				fmt.Errorf("no connector config or destination config provided"))
 		}
 
+		// check runs one side only; with both passed the source would be silently skipped
+		if destinationConfigPath != "not-set" && configPath != "not-set" {
+			return errs.Precondition(errs.ConfigInvalid, codeConflictingCheckFlags,
+				fmt.Errorf("check accepts either --config or --destination, got both"))
+		}
+
 		// check for destination config
 		if destinationConfigPath != "not-set" {
 			destinationConfig = &types.WriterConfig{}

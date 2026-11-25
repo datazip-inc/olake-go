@@ -400,3 +400,14 @@ func TestRecoverToError(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckRejectsBothFlags: check must not silently skip the source when --destination is also passed.
+func TestCheckRejectsBothFlags(t *testing.T) {
+	prevConfig, prevDest := configPath, destinationConfigPath
+	t.Cleanup(func() { configPath, destinationConfigPath = prevConfig, prevDest })
+	configPath, destinationConfigPath = "source.json", "destination.json"
+
+	err := checkCmd.PreRunE(nil, nil)
+	require.Error(t, err)
+	assert.Equal(t, codeConflictingCheckFlags, errs.From(errs.Classify(err)).Code)
+}

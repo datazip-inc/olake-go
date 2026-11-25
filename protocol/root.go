@@ -214,6 +214,7 @@ const (
 	codeFlagMissing                  = "config.flag_missing"
 	codeConflictingCatalogFlags      = "config.conflicting_catalog_flags"
 	codeConflictingDifferenceFlags   = "config.conflicting_difference_flags"
+	codeConflictingCheckFlags        = "config.conflicting_check_flags"
 	codeIncompleteCatalogFlagPair    = "config.incomplete_catalog_flag_pair"
 	codeIncompleteDifferenceFlagPair = "config.incomplete_difference_flag_pair"
 	codeNoValidStreams               = "catalog.no_valid_streams"
