@@ -14,6 +14,7 @@ import (
 	"github.com/datazip-inc/olake/utils"
 	"github.com/datazip-inc/olake/utils/errs"
 	"github.com/datazip-inc/olake/utils/logger"
+	"golang.org/x/sync/errgroup"
 )
 
 // codeWriterPanicRecovered names a panic recovered inside a writer thread, distinct from sync command.
@@ -385,7 +386,9 @@ func generateThreadID(streamID, hash string) string {
 // The writer parameter can be either:
 //   - *destination.WriterThread for a single writer
 //   - map[string]*destination.WriterThread for multiple writers keyed by stream ID
-func handleWriterCleanup(ctx context.Context, cancel context.CancelFunc, err *error, writer any, threadID string, mtState *any, dedupInserts *bool) {
+//
+// closeLimit bounds how many writers of a map are closed at once; values below 1 close them one at a time.
+func handleWriterCleanup(ctx context.Context, cancel context.CancelFunc, err *error, writer any, closeLimit int, threadID string, mtState *any, dedupInserts *bool) {
 	if r := recover(); r != nil {
 		// panic is classified as internal error
 		*err = utils.Ternary(*err == nil,
@@ -429,19 +432,17 @@ func handleWriterCleanup(ctx context.Context, cancel context.CancelFunc, err *er
 		closeErr = closeWriter(w, mtStateValue)
 	case map[string]*destination.WriterThread:
 		// Multiple writers keyed by stream ID
-		for streamID, inserter := range w {
-			if inserter != nil {
-				var mtStateValue any
-				if mtState != nil {
-					if mtStateValueByStream, ok := (*mtState).(map[string]any); ok {
-						mtStateValue = mtStateValueByStream[streamID]
-					} else {
-						mtStateValue = *mtState
-					}
+		closeErr = closeWriters(w, closeLimit, func(streamID string, inserter *destination.WriterThread) error {
+			var mtStateValue any
+			if mtState != nil {
+				if mtStateValueByStream, ok := (*mtState).(map[string]any); ok {
+					mtStateValue = mtStateValueByStream[streamID]
+				} else {
+					mtStateValue = *mtState
 				}
-				closeErr = errors.Join(closeErr, closeWriter(inserter, mtStateValue))
 			}
-		}
+			return closeWriter(inserter, mtStateValue)
+		})
 	default:
 		closeErr = fmt.Errorf("unsupported writer type")
 	}
@@ -456,6 +457,45 @@ func handleWriterCleanup(ctx context.Context, cancel context.CancelFunc, err *er
 	if *err != nil && threadID != "" {
 		*err = fmt.Errorf("thread[%s]: %w", threadID, *err)
 	}
+}
+
+// closeWriters calls closeFn for every non-nil writer, running at most limit calls at once (one at a
+// time when limit < 1). Each close is a separate destination commit, so a failed close does not stop
+// the others; all errors are joined. A panic in closeFn is re-raised once every close has returned.
+func closeWriters(writers map[string]*destination.WriterThread, limit int, closeFn func(streamID string, w *destination.WriterThread) error) error {
+	var (
+		group     errgroup.Group
+		mu        sync.Mutex
+		closeErr  error
+		recovered any
+	)
+	group.SetLimit(max(limit, 1))
+
+	for streamID, w := range writers {
+		if w == nil {
+			continue
+		}
+		group.Go(func() error {
+			var err error
+			defer func() {
+				r := recover()
+				mu.Lock()
+				defer mu.Unlock()
+				closeErr = errors.Join(closeErr, err)
+				if r != nil && recovered == nil {
+					recovered = r
+				}
+			}()
+			err = closeFn(streamID, w)
+			return nil
+		})
+	}
+	_ = group.Wait()
+
+	if recovered != nil {
+		panic(recovered)
+	}
+	return closeErr
 }
 
 func (a *AbstractDriver) supportsCdcColumn() bool {

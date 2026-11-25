@@ -91,7 +91,7 @@ func (a *AbstractDriver) Incremental(mainCtx context.Context, pool *destination.
 			}(incrementalCtx)
 
 			var mtState any
-			defer handleWriterCleanup(incrementalCtx, incrementalCtxCancel, &err, inserter, threadID, &mtState, nil)
+			defer handleWriterCleanup(incrementalCtx, incrementalCtxCancel, &err, inserter, 1, threadID, &mtState, nil)
 
 			// threadID is derived from the cursor, which moves only when records are read. Committing
 			// metadata state for a record-less sync would store state whose ID equals the next sync's

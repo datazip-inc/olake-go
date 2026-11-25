@@ -27,7 +27,7 @@ import (
 func cleanupResult(prior error, r any, threadID string, writer any) error {
 	err := prior
 	func() {
-		defer handleWriterCleanup(context.Background(), func() {}, &err, writer, threadID, nil, nil)
+		defer handleWriterCleanup(context.Background(), func() {}, &err, writer, 1, threadID, nil, nil)
 		panic(r)
 	}()
 	return err
@@ -774,4 +774,128 @@ func TestDiscoverSampledBucketsContextEndsBetweenBuckets(t *testing.T) {
 			assert.Equal(t, map[string][]string{"a": {bucketColumn(first)}, "b": {bucketColumn(first)}, "c": {bucketColumn(first)}}, sampledColumns(streams))
 		})
 	}
+}
+
+// testWriters builds n writers keyed s0..s<n-1>. closeWriters never touches a writer itself, so empty
+// threads are enough when closeFn is faked.
+func testWriters(n int) map[string]*destination.WriterThread {
+	writers := make(map[string]*destination.WriterThread, n)
+	for i := range n {
+		writers[fmt.Sprintf("s%d", i)] = &destination.WriterThread{}
+	}
+	return writers
+}
+
+// concurrencyProbe records how many closes run at once; each close holds its slot for hold.
+type concurrencyProbe struct {
+	mu           sync.Mutex
+	active, peak int
+	closed       []string
+}
+
+func (p *concurrencyProbe) close(streamID string, hold time.Duration) {
+	p.mu.Lock()
+	p.active++
+	p.peak = max(p.peak, p.active)
+	p.mu.Unlock()
+
+	time.Sleep(hold)
+
+	p.mu.Lock()
+	p.active--
+	p.closed = append(p.closed, streamID)
+	p.mu.Unlock()
+}
+
+func TestCloseWritersRespectsLimit(t *testing.T) {
+	testCases := []struct {
+		name         string
+		writers      int
+		limit        int
+		expectedPeak int
+	}{
+		{name: "limit below 1 closes one at a time", writers: 4, limit: 0, expectedPeak: 1},
+		{name: "limit 1 closes one at a time", writers: 4, limit: 1, expectedPeak: 1},
+		{name: "limit caps concurrent closes", writers: 6, limit: 2, expectedPeak: 2},
+		{name: "limit above writer count", writers: 3, limit: 8, expectedPeak: 3},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &concurrencyProbe{}
+			err := closeWriters(testWriters(tc.writers), tc.limit, func(streamID string, _ *destination.WriterThread) error {
+				probe.close(streamID, 50*time.Millisecond)
+				return nil
+			})
+
+			require.NoError(t, err)
+			assert.Len(t, probe.closed, tc.writers)
+			assert.Equal(t, tc.expectedPeak, probe.peak)
+		})
+	}
+}
+
+// Every close must be in flight at the same time: each waits until all of them have started.
+func TestCloseWritersOverlap(t *testing.T) {
+	const n = 4
+	var started sync.WaitGroup
+	started.Add(n)
+	allStarted := make(chan struct{})
+	go func() {
+		started.Wait()
+		close(allStarted)
+	}()
+
+	err := closeWriters(testWriters(n), n, func(_ string, _ *destination.WriterThread) error {
+		started.Done()
+		select {
+		case <-allStarted:
+			return nil
+		case <-time.After(5 * time.Second):
+			return errors.New("closes did not overlap")
+		}
+	})
+	require.NoError(t, err)
+}
+
+// A failed close (a failed destination commit) must not stop the other writers from closing.
+func TestCloseWritersClosesAllAndJoinsErrors(t *testing.T) {
+	errA := errors.New("commit failed for s1")
+	errB := errors.New("commit failed for s3")
+	failures := map[string]error{"s1": errA, "s3": errB}
+
+	for _, limit := range []int{1, 3} {
+		t.Run(fmt.Sprintf("limit %d", limit), func(t *testing.T) {
+			writers := testWriters(5)
+			writers["nil-writer"] = nil
+
+			probe := &concurrencyProbe{}
+			err := closeWriters(writers, limit, func(streamID string, w *destination.WriterThread) error {
+				assert.NotNil(t, w, "nil writers are skipped")
+				probe.close(streamID, time.Millisecond)
+				return failures[streamID]
+			})
+
+			assert.ElementsMatch(t, []string{"s0", "s1", "s2", "s3", "s4"}, probe.closed)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, errA)
+			assert.ErrorIs(t, err, errB)
+		})
+	}
+}
+
+// A panicking close is re-raised to the caller, as it was when writers closed inline, but only
+// after the other writers have closed.
+func TestCloseWritersRepanicsAfterAllClosed(t *testing.T) {
+	probe := &concurrencyProbe{}
+	assert.PanicsWithValue(t, "boom", func() {
+		_ = closeWriters(testWriters(4), 2, func(streamID string, _ *destination.WriterThread) error {
+			if streamID == "s2" {
+				panic("boom")
+			}
+			probe.close(streamID, 10*time.Millisecond)
+			return nil
+		})
+	})
+	assert.ElementsMatch(t, []string{"s0", "s1", "s3"}, probe.closed)
 }

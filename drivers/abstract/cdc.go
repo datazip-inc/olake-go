@@ -140,7 +140,9 @@ func (a *AbstractDriver) streamChanges(mainCtx context.Context, pool *destinatio
 		metadataStates[stream.ID()] = writerMetaState
 	}
 
-	defer handleWriterCleanup(cdcCtx, cdcCtxCancel, &err, writers, "", &finalMetadataState, &clearDedup)
+	// each writer close is a final flush and a commit to its own table; run up to max_threads of them
+	// at once, the same bound backfill uses for its chunk writers
+	defer handleWriterCleanup(cdcCtx, cdcCtxCancel, &err, writers, a.driver.MaxConnections(), "", &finalMetadataState, &clearDedup)
 
 	finalMetadataState, err = a.driver.StreamChanges(cdcCtx, streamIndex, metadataStates, func(ctx context.Context, change CDCChange) error {
 		writer := writers[change.Stream.ID()]
