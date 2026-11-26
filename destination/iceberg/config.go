@@ -79,6 +79,8 @@ type Config struct {
 	RestAuthType      string `json:"rest_auth_type,omitempty"`
 	RestScope         string `json:"scope,omitempty"`
 	RestCredential    string `json:"credential,omitempty"`
+	// Extra HTTP headers sent on every REST catalog request (forwarded as header.<name>)
+	RestHeaders map[string]string `json:"rest_headers,omitempty"`
 
 	// GCP auth for GoogleAuthManager (e.g. BigLake). Inline SA key JSON;
 	GCPServiceAccountJSON string `json:"gcp_service_account_json,omitempty"`

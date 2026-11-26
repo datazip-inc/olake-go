@@ -291,6 +291,15 @@
                   "type": "string",
                   "title": "GCP Project ID",
                   "description": "Required for multi-bucket catalogs only. Identifies the GCP project for BigLake request routing and billing."
+                },
+                "rest_headers": {
+                  "type": "object",
+                  "title": "REST Custom Headers",
+                  "description": "Optional HTTP headers sent on every REST catalog request, as header name to value. Values may be sensitive",
+                  "additionalProperties": {
+                    "type": "string",
+                    "format": "password"
+                  }
                 }
               },
               "required": [
@@ -836,6 +845,15 @@
                   "type": "string",
                   "title": "GCP Project ID",
                   "description": "Required for multi-bucket catalogs only. Identifies the GCP project for BigLake request routing and billing"
+                },
+                "rest_headers": {
+                  "type": "object",
+                  "title": "REST Custom Headers",
+                  "description": "Optional HTTP headers sent on every REST catalog request, as header name to value. Values may be sensitive",
+                  "additionalProperties": {
+                    "type": "string",
+                    "format": "password"
+                  }
                 }
               },
               "required": [
