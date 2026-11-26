@@ -11,7 +11,6 @@ import (
 
 	"github.com/datazip-inc/olake/destination"
 	_ "github.com/datazip-inc/olake/destination/parquet"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -50,7 +49,7 @@ func TestHandlerDestination(t *testing.T) {
 			prefix: func(database string) string { return "iceberg_jdbc/" + database },
 			write: func(t *testing.T, dest *testhandler.Destination) {
 				// No writer runs here, so the test creates the catalog's two tables itself, locked against a parallel run.
-				_, err := drivertest.Psql(t.Context(), jdbcCatalogDatabase, `DO $$ BEGIN
+				_, err := psql(t.Context(), jdbcCatalogService, `DO $$ BEGIN
 					PERFORM pg_advisory_xact_lock(1);
 					CREATE TABLE IF NOT EXISTS iceberg_tables (
 						catalog_name VARCHAR(255) NOT NULL, table_namespace VARCHAR(255) NOT NULL, table_name VARCHAR(255) NOT NULL,
@@ -66,7 +65,7 @@ func TestHandlerDestination(t *testing.T) {
 				require.NoError(t, err)
 			},
 			entries: func(t *testing.T, database string) string {
-				rows, err := drivertest.Psql(t.Context(), jdbcCatalogDatabase,
+				rows, err := psql(t.Context(), jdbcCatalogService,
 					`SELECT table_name FROM iceberg_tables WHERE table_namespace = '`+database+`'
 					 UNION ALL SELECT property_key FROM iceberg_namespace_properties WHERE namespace = '`+database+`'`)
 				require.NoError(t, err)

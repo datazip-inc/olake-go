@@ -2,26 +2,34 @@ package destinationtest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
 const jdbcCatalogDatabase = "olake_testhandler_catalog"
 
-// IcebergJDBC writes Iceberg tables through a JDBC catalog kept in the Postgres container.
+// jdbcCatalogService is the catalog's own Postgres, which creates jdbcCatalogDatabase when it first starts.
+var jdbcCatalogService = &testhandler.Service{
+	Container: "olake-catalog-postgres",
+	Port:      15432,
+	Target:    "testutils.postgres.start",
+	Ready: func(ctx context.Context, s *testhandler.Service) error {
+		_, err := psql(ctx, s, "SELECT 1")
+		return err
+	},
+}
+
+// IcebergJDBC writes Iceberg tables through a JDBC catalog kept in its own Postgres container.
 var IcebergJDBC testhandler.DestinationKind = &icebergKind{
 	name:      "iceberg-jdbc",
-	catalog:   drivertest.Postgres.Service(),
-	prepare:   createJDBCCatalog,
+	catalog:   jdbcCatalogService,
 	warehouse: "s3a://" + bucket + "/iceberg_jdbc",
 	config: map[string]any{
 		"catalog_type":  "jdbc",
-		"jdbc_url":      fmt.Sprintf("jdbc:postgresql://%s/%s", drivertest.Postgres.Service().Addr(), jdbcCatalogDatabase),
-		"jdbc_username": "postgres",
-		"jdbc_password": drivertest.PostgresPassword,
+		"jdbc_url":      fmt.Sprintf("jdbc:postgresql://%s/%s", jdbcCatalogService.Addr(), jdbcCatalogDatabase),
+		"jdbc_username": serverUser,
+		"jdbc_password": serverKey,
 	},
 	dropNamespace: dropJDBCNamespace,
 	files: func(namespace string) string {
@@ -29,21 +37,10 @@ var IcebergJDBC testhandler.DestinationKind = &icebergKind{
 	},
 }
 
-// createJDBCCatalog creates the catalog's database. Another process may create it at the same moment,
-// so only its absence is an error.
-func createJDBCCatalog(ctx context.Context) error {
-	_, createErr := drivertest.Psql(ctx, "postgres", `CREATE DATABASE `+jdbcCatalogDatabase)
-	found, err := drivertest.Psql(ctx, "postgres", `SELECT count(*) FROM pg_database WHERE datname = '`+jdbcCatalogDatabase+`'`)
-	if err != nil || found != "1" {
-		return fmt.Errorf("no JDBC catalog database: %v", errors.Join(createErr, err))
-	}
-	return nil
-}
-
 // dropJDBCNamespace removes a namespace and its tables from the catalog's two tables.
 // The catalog creates those tables on first use, so they may not exist yet.
 func dropJDBCNamespace(ctx context.Context, namespace string) error {
-	_, err := drivertest.Psql(ctx, jdbcCatalogDatabase, `DO $$ BEGIN
+	_, err := psql(ctx, jdbcCatalogService, `DO $$ BEGIN
 		IF to_regclass('iceberg_tables') IS NOT NULL THEN
 			DELETE FROM iceberg_tables WHERE table_namespace = '`+namespace+`';
 		END IF;
@@ -52,4 +49,16 @@ func dropJDBCNamespace(ctx context.Context, namespace string) error {
 		END IF;
 	END $$`)
 	return err
+}
+
+// psql runs statements against the catalog's database over the container's socket, each in its own transaction.
+func psql(ctx context.Context, s *testhandler.Service, statements ...string) (string, error) {
+	command := []string{
+		"psql", "--username", serverUser, "--dbname", jdbcCatalogDatabase,
+		"--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1",
+	}
+	for _, statement := range statements {
+		command = append(command, "--command", statement)
+	}
+	return s.Exec(ctx, nil, command...)
 }

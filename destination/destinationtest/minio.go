@@ -11,7 +11,8 @@ import (
 const (
 	bucket = "warehouse"
 	region = "us-east-1"
-	// serverUser and serverKey log in to MinIO, as destination/iceberg/local-test/catalog/docker-compose.yml sets them.
+	// serverUser and serverKey log in to MinIO and the JDBC catalog's Postgres, as
+	// destination/iceberg/local-test/catalog/docker-compose.yml sets them.
 	serverUser = "olake"
 	serverKey  = "olake-testhandler"
 )

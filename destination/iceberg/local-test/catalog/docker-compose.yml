@@ -1,4 +1,4 @@
-# Iceberg catalogs (REST, Hive, Glue) with the MinIO warehouse they write to, apart from the stack beside this folder.
+# Iceberg catalogs (JDBC, REST, Hive, Glue) with the MinIO warehouse they write to, apart from the stack beside this folder.
 # utils/testutils/testutils.mk starts them for the unit tests; host ports avoid that stack and 50051.
 name: olake-catalog
 
@@ -54,3 +54,14 @@ services:
     container_name: olake-catalog-glue
     ports:
       - "127.0.0.1:15000:5000"
+
+  # Keeps the JDBC catalog's tables in its own database, apart from the drivers' Postgres.
+  postgres:
+    image: postgres:15
+    container_name: olake-catalog-postgres
+    environment:
+      POSTGRES_USER: olake
+      POSTGRES_PASSWORD: olake-testhandler
+      POSTGRES_DB: olake_testhandler_catalog
+    ports:
+      - "127.0.0.1:15432:5432"

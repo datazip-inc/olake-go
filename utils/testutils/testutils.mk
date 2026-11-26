@@ -2,7 +2,7 @@
 # Tests never start them: CI runs testutils.all.start, and a local test fails naming the target to run.
 
 TESTUTILS_COMPOSE = $(COMPOSE) -f destination/iceberg/local-test/catalog/docker-compose.yml
-TESTUTILS_SERVICES := minio iceberg-rest hive-metastore glue
+TESTUTILS_SERVICES := minio iceberg-rest hive-metastore glue postgres
 # The driver stacks the unit tests share with the integration suites, started by olake.<driver>.start.
 TESTUTILS_DRIVERS := postgres mysql mongodb mssql kafka
 
@@ -14,6 +14,8 @@ PROBE.testutils.iceberg-rest = curl -sf http://127.0.0.1:18181/v1/config
 PROBE.testutils.hive-metastore = docker exec olake-catalog-hive-metastore bash -c 'exec 3<>/dev/tcp/127.0.0.1/9083'
 WAIT_RETRIES.testutils.hive-metastore := 60
 PROBE.testutils.glue = curl -sf http://127.0.0.1:15000/moto-api/
+# Over TCP inside the container: the image's first start serves only its socket while it creates the database.
+PROBE.testutils.postgres = docker exec olake-catalog-postgres pg_isready --host 127.0.0.1 --username olake --dbname olake_testhandler_catalog
 
 define TESTUTILS_template
 .PHONY: testutils.$(1).start
