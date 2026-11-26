@@ -211,13 +211,13 @@ For advanced users and automation, OLake Go's core logic is exposed via a powerf
 
 #### Exit Codes
 
-When a command finishes, OLake Go exits with one of these codes:
+When a command finishes, OLake Go exits with one of these codes. The last log line shows the code and what to do next.
 
 | Exit code | Meaning | What to do |
 |---|---|---|
 | `0` | The command finished successfully. | Nothing. |
-| `1` | The command failed. | Check the error in the logs and fix the cause (for example, the config, credentials or source). If the error is temporary (for example, a network timeout), increase the retry count in the source config (`retry_count` or `backoff_retry_count`) instead of rerunning the job yourself. |
-| `3` | The command failed, but a fresh run is expected to succeed (for example, Kafka partition loss during a consumer group rebalance). | Run the job again. |
+| `1` | The command failed. | Check the error in the logs and fix the cause (for example, the config, credentials or source), then run the job again. If the error is temporary (for example, a network timeout), you can also increase the retry count in the source config (`retry_count` or `backoff_retry_count`, depending on the source) so OLake Go retries it within the same run. |
+| `3` | The command failed, but running it again should fix it. Currently this is used only for Kafka partition loss during a consumer group rebalance. | Run the job again. |
 
 **Find out more about CLI [here](https://olake.io/docs/install/docker-cli/).**
 
