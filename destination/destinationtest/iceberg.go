@@ -35,6 +35,8 @@ type icebergKind struct {
 	name string
 	// catalog is the container that serves the catalog.
 	catalog *testhandler.Service
+	// prepare readies the catalog before a test opens the kind; nil when the catalog needs nothing.
+	prepare func(ctx context.Context) error
 	// warehouse is the writer's iceberg_s3_path.
 	warehouse string
 	// config holds the catalog's own keys of the writer config.
@@ -53,8 +55,13 @@ func (k *icebergKind) Services() []*testhandler.Service {
 	return []*testhandler.Service{minioService, k.catalog}
 }
 
-// Open takes this test's turn on the Iceberg writer and returns the MinIO warehouse plus the catalog's keys.
+// Open readies the catalog, takes this test's turn on the Iceberg writer and returns the MinIO warehouse plus the catalog's keys.
 func (k *icebergKind) Open(ctx context.Context, t testing.TB) (*types.WriterConfig, error) {
+	if k.prepare != nil {
+		if err := k.prepare(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if err := leaseIcebergWriter(ctx, t); err != nil {
 		return nil, err
 	}
