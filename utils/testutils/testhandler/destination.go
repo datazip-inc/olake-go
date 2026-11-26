@@ -7,8 +7,8 @@ import (
 	"github.com/datazip-inc/olake/types"
 )
 
-// DestinationKind is a destination tests write to. The destination implements it in its own test package,
-// and the handler gives each test its own database in it, named by the test id.
+// DestinationKind is a destination tests write to, each test in its own database named by the test id.
+// It must be comparable, such as a pointer, because the handler caches each test's destination by its kind.
 type DestinationKind interface {
 	// Name names the kind in failures; a test gets one destination per kind.
 	Name() string
