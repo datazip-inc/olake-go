@@ -4,7 +4,7 @@
 TESTUTILS_COMPOSE = $(COMPOSE) -f destination/iceberg/local-test/catalog/docker-compose.yml
 TESTUTILS_SERVICES := minio iceberg-rest hive-metastore glue
 # The driver stacks the unit tests share with the integration suites, started by olake.<driver>.start.
-TESTUTILS_DRIVERS := postgres mysql mongodb
+TESTUTILS_DRIVERS := postgres mysql mongodb mssql kafka
 
 TESTUTILS_MC = docker exec --env MC_HOST_local=http://olake:olake-testhandler@127.0.0.1:9000 olake-catalog-minio mc
 PROBE.testutils.minio = $(TESTUTILS_MC) ls local
