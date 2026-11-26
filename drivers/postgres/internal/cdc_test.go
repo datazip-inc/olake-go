@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/datazip-inc/olake/drivers/abstract"
+	"github.com/datazip-inc/olake/drivers/postgres/internal/postgrestest"
 	"github.com/datazip-inc/olake/types"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -90,7 +91,7 @@ func TestSupportedWriteModes(t *testing.T) {
 }
 
 func TestPostgresStreamChanges(t *testing.T) {
-	drivertest.UseStateFile(t)
+	testutils.UseStateFile(t)
 	testCases := []struct {
 		name       string
 		statements []string
@@ -132,22 +133,20 @@ func TestPostgresStreamChanges(t *testing.T) {
 			t.Parallel()
 			config := testConfig(testhandler.New(t))
 			// The slot is named after the test's database, so cleanup drops it with the database.
-			_, err := drivertest.Psql(t.Context(), config.Database,
+			require.NoError(t, postgrestest.Exec(t.Context(), config.Database,
 				`CREATE TABLE users (id int PRIMARY KEY, name text)`,
 				`CREATE PUBLICATION olake_publication FOR TABLE users`,
-				`SELECT pg_create_logical_replication_slot('`+config.Database+`', 'pgoutput')`)
-			require.NoError(t, err)
+				`SELECT pg_create_logical_replication_slot('`+config.Database+`', 'pgoutput')`))
 			config.UpdateMethod = map[string]any{"replication_slot": config.Database, "publication": "olake_publication", "initial_wait_time": 120}
 			p := &Postgres{config: config}
 			require.NoError(t, p.Setup(t.Context()))
 			t.Cleanup(p.CloseConnection)
 			p.SetupState(&types.State{RWMutex: &sync.RWMutex{}, Type: types.GlobalType})
 			require.NoError(t, p.PreCDC(t.Context(), []types.StreamInterface{types.NewStream("users", "public", nil).Wrap(0)}))
-			_, err = drivertest.Psql(t.Context(), config.Database, tc.statements...)
-			require.NoError(t, err)
+			require.NoError(t, postgrestest.Exec(t.Context(), config.Database, tc.statements...))
 
 			var got []abstract.CDCChange
-			_, err = p.StreamChanges(t.Context(), 0, nil, func(_ context.Context, change abstract.CDCChange) error {
+			_, err := p.StreamChanges(t.Context(), 0, nil, func(_ context.Context, change abstract.CDCChange) error {
 				got = append(got, abstract.CDCChange{Kind: change.Kind, Data: change.Data})
 				return nil
 			})

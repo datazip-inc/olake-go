@@ -1,7 +1,7 @@
 package driver
 
 import (
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/drivers/postgres/internal/postgrestest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -9,9 +9,9 @@ import (
 func testConfig(h *testhandler.Handler) *Config {
 	return &Config{
 		Host:     testhandler.Host,
-		Port:     drivertest.Postgres.Service().Port,
-		Database: h.Database(drivertest.Postgres),
+		Port:     postgrestest.Source.Service().Port,
+		Database: h.Database(postgrestest.Source),
 		Username: "postgres",
-		Password: drivertest.PostgresPassword,
+		Password: postgrestest.Password,
 	}
 }

@@ -11,8 +11,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/datazip-inc/olake/drivers/abstract"
+	"github.com/datazip-inc/olake/drivers/kafka/internal/kafkatest"
 	"github.com/datazip-inc/olake/types"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -160,7 +161,7 @@ func TestParseKafkaData(t *testing.T) {
 }
 
 func TestKafkaStreamChanges(t *testing.T) {
-	drivertest.UseStateFile(t)
+	testutils.UseStateFile(t)
 	alice, bob := []byte(`{"id":1,"name":"alice"}`), []byte(`{"id":2,"name":"bob"}`)
 	testCases := []struct {
 		name string
@@ -199,7 +200,7 @@ func TestKafkaStreamChanges(t *testing.T) {
 			k := &Kafka{config: testConfig(h)}
 			require.NoError(t, k.Setup(t.Context()))
 			t.Cleanup(func() { _ = k.Close() })
-			topic := h.Database(drivertest.Kafka)
+			topic := h.Database(kafkatest.Source)
 			for _, message := range tc.messages {
 				require.NoError(t, k.client.ProduceSync(t.Context(), &kgo.Record{Topic: topic, Value: message}).FirstErr())
 			}

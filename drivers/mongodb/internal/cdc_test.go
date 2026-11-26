@@ -9,7 +9,7 @@ import (
 
 	"github.com/datazip-inc/olake/drivers/abstract"
 	"github.com/datazip-inc/olake/types"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -523,7 +523,7 @@ func TestResumeTokenOfOneStreamDoesNotReachAnother(t *testing.T) {
 }
 
 func TestMongoStreamChanges(t *testing.T) {
-	drivertest.UseStateFile(t)
+	testutils.UseStateFile(t)
 	alice := bson.D{{Key: "_id", Value: int32(1)}, {Key: "name", Value: "alice"}}
 	testCases := []struct {
 		name  string

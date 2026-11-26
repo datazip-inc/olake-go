@@ -15,7 +15,7 @@ import (
 	"github.com/datazip-inc/olake/drivers/abstract"
 	"github.com/datazip-inc/olake/drivers/mysql/internal/binlog"
 	"github.com/datazip-inc/olake/types"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/spf13/viper"
@@ -23,7 +23,7 @@ import (
 )
 
 func TestMySQL_StreamChanges(t *testing.T) {
-	drivertest.UseStateFile(t)
+	testutils.UseStateFile(t)
 	testCases := []struct {
 		name string
 		// metadataPos is the offset an unrelated server's checkpoint claims in our binlog file, which can be

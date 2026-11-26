@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/datazip-inc/olake/drivers/abstract"
+	"github.com/datazip-inc/olake/drivers/postgres/internal/postgrestest"
 	"github.com/datazip-inc/olake/types"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -58,11 +58,11 @@ func TestReplicatorStreamChanges(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			database := testhandler.New(t).Database(drivertest.Postgres)
+			database := testhandler.New(t).Database(postgrestest.Source)
 			connection := url.URL{
 				Scheme:   "postgres",
-				User:     url.UserPassword("postgres", drivertest.PostgresPassword),
-				Host:     drivertest.Postgres.Service().Addr(),
+				User:     url.UserPassword("postgres", postgrestest.Password),
+				Host:     postgrestest.Source.Service().Addr(),
 				Path:     "/" + database,
 				RawQuery: "sslmode=disable",
 			}

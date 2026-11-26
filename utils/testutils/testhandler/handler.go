@@ -1,5 +1,5 @@
 // Package testhandler gives each unit test its own databases and destinations on shared containers, which make starts.
-// It knows no driver or destination: testutils/drivertest implements Source, destination/destinationtest implements DestinationKind.
+// It knows no driver or destination: each driver's internal <driver>test package implements Source, destination/destinationtest implements DestinationKind.
 package testhandler
 
 import (

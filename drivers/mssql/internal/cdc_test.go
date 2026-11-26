@@ -9,13 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/datazip-inc/olake/drivers/abstract"
+	"github.com/datazip-inc/olake/drivers/mssql/internal/mssqltest"
 	"github.com/datazip-inc/olake/types"
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
 func TestMSSQLStreamChanges(t *testing.T) {
-	drivertest.UseStateFile(t)
+	testutils.UseStateFile(t)
 	testCases := []struct {
 		name       string
 		statements []string
@@ -56,10 +57,9 @@ func TestMSSQLStreamChanges(t *testing.T) {
 			// Every case writes the same row to the same table, so a change leaking between databases shows in got.
 			t.Parallel()
 			config := testConfig(testhandler.New(t))
-			_, err := drivertest.Sqlcmd(t.Context(), config.Database, "CREATE TABLE dbo.users (id int PRIMARY KEY, name nvarchar(50))")
-			require.NoError(t, err)
+			require.NoError(t, mssqltest.Exec(t.Context(), config.Database, "CREATE TABLE dbo.users (id int PRIMARY KEY, name nvarchar(50))"))
 			// Setup requires CDC on the database and a capture job, which the first captured table brings.
-			require.NoError(t, drivertest.EnableMSSQLCDC(t.Context(), config.Database, "users"))
+			require.NoError(t, mssqltest.EnableCDC(t.Context(), config.Database, "users"))
 			config.UpdateMethod = map[string]any{"type": "CDC"}
 			m := &MSSQL{config: config}
 			require.NoError(t, m.Setup(t.Context()))
@@ -78,7 +78,7 @@ func TestMSSQLStreamChanges(t *testing.T) {
 			}, time.Minute, 500*time.Millisecond)
 
 			var got []abstract.CDCChange
-			_, err = m.StreamChanges(t.Context(), 0, nil, func(_ context.Context, change abstract.CDCChange) error {
+			_, err := m.StreamChanges(t.Context(), 0, nil, func(_ context.Context, change abstract.CDCChange) error {
 				got = append(got, abstract.CDCChange{Kind: change.Kind, Data: change.Data})
 				return nil
 			})

@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// Source is a database server that a driver's tests share. testutils/drivertest implements it once per driver,
+// Source is a database server that a driver's tests share. Each driver implements it once, in its internal <driver>test package,
 // and the handler gives each test its own database on it, named by the test id.
 type Source interface {
 	// Service is the container the server runs in.

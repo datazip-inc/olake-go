@@ -1,7 +1,7 @@
 package driver
 
 import (
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/drivers/mysql/internal/mysqltest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -9,9 +9,9 @@ import (
 func testConfig(h *testhandler.Handler) *Config {
 	return &Config{
 		Host:     testhandler.Host,
-		Port:     drivertest.MySQL.Service().Port,
-		Database: h.Database(drivertest.MySQL),
+		Port:     mysqltest.Source.Service().Port,
+		Database: h.Database(mysqltest.Source),
 		Username: "root",
-		Password: drivertest.MySQLRootPassword,
+		Password: mysqltest.RootPassword,
 	}
 }

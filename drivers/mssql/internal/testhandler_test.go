@@ -1,7 +1,7 @@
 package driver
 
 import (
-	"github.com/datazip-inc/olake/utils/testutils/drivertest"
+	"github.com/datazip-inc/olake/drivers/mssql/internal/mssqltest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
@@ -9,9 +9,9 @@ import (
 func testConfig(h *testhandler.Handler) *Config {
 	return &Config{
 		Host:     testhandler.Host,
-		Port:     drivertest.MSSQL.Service().Port,
-		Database: h.Database(drivertest.MSSQL),
+		Port:     mssqltest.Source.Service().Port,
+		Database: h.Database(mssqltest.Source),
 		Username: "sa",
-		Password: drivertest.MSSQLPassword,
+		Password: mssqltest.Password,
 	}
 }

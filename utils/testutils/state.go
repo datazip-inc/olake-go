@@ -1,4 +1,4 @@
-package drivertest
+package testutils
 
 import (
 	"path/filepath"
