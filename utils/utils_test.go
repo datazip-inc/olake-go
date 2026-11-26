@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -322,4 +323,30 @@ func TestExitCode(t *testing.T) {
 			assert.Equal(t, tc.expected, ExitCode(tc.err))
 		})
 	}
+}
+
+// TestRetryOnBackoffMarkers checks how many times RetryOnBackoff runs a function for each kind of error.
+func TestRetryOnBackoffMarkers(t *testing.T) {
+	testCases := []struct {
+		name          string
+		err           error
+		expectedCalls int
+	}{
+		{name: "plain error is retried", err: errors.New("connection reset by peer"), expectedCalls: 3},
+		{name: "non retryable is not retried", err: fmt.Errorf("%w: publication missing", constants.ErrNonRetryable), expectedCalls: 1},
+		{name: "restart required is not retried", err: fmt.Errorf("%w: partition loss", constants.ErrRestartRequired), expectedCalls: 1},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			err := RetryOnBackoff(context.Background(), 2, time.Millisecond, func(_ context.Context) error {
+				calls++
+				return tc.err
+			})
+			assert.Error(t, err)
+			assert.Equal(t, tc.expectedCalls, calls)
+		})
+	}
+
 }

@@ -359,7 +359,7 @@ func (r *ReaderManager) FetchExitState() (stop bool, err error) {
 		logger.Warnf("stopping kafka CDC processing gracefully due to consumer group rebalance")
 		return true, nil
 	case nonRetryableExit:
-		return true, fmt.Errorf("%w: %w: kafka sync aborted due to partition loss during consumer group rebalance", constants.ErrNonRetryable, constants.ErrRestartRequired)
+		return true, fmt.Errorf("%w: kafka sync aborted due to partition loss during consumer group rebalance", constants.ErrRestartRequired)
 	default:
 		return true, fmt.Errorf("%w: kafka sync aborted: unexpected exit mode", constants.ErrNonRetryable)
 	}

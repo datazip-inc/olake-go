@@ -122,8 +122,9 @@ var ParallelCDCDrivers = []DriverType{MongoDB, MSSQL}
 // It does not decide the exit code; a fresh run may still fix them (see ErrRestartRequired).
 var ErrNonRetryable = fmt.Errorf("failed with non retryable error")
 
-// ErrRestartRequired marks errors a fresh run can fix; the process exits with ExitCodeRestartRequired.
-var ErrRestartRequired = fmt.Errorf("restart required")
+// ErrRestartRequired marks errors a fresh run can fix; they are not retried inside the current
+// process, and the process exits with ExitCodeRestartRequired.
+var ErrRestartRequired = fmt.Errorf("stopped safely, restart required")
 
 const (
 	ExitCodeFailure         = 1
