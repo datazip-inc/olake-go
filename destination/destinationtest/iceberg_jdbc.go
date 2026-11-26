@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/datazip-inc/olake/drivers/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils/drivertest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 

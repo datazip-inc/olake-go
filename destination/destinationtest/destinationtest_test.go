@@ -11,7 +11,7 @@ import (
 
 	"github.com/datazip-inc/olake/destination"
 	_ "github.com/datazip-inc/olake/destination/parquet"
-	"github.com/datazip-inc/olake/drivers/drivertest"
+	"github.com/datazip-inc/olake/utils/testutils/drivertest"
 	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
