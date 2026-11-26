@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.ConnectException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -270,6 +271,30 @@ class OlakeFailuresTest {
         }
     }
 
+    static Stream<Arguments> messageCases() {
+        Throwable root = new ConnectException("Connection refused");
+        return Stream.of(
+                // nothing to join
+                Arguments.of("a single exception sends its own message", new RuntimeException("boom"), "boom"),
+                // the outermost says what was attempted, the innermost why it failed
+                Arguments.of("every distinct message is joined, outermost first",
+                        new RuntimeException("Failed to connect: jdbc:postgresql://h/db", new SQLException("refused", root)),
+                        "Failed to connect: jdbc:postgresql://h/db <- refused <- Connection refused"),
+                // new RuntimeException(cause) takes the cause's text as its own
+                Arguments.of("a wrapper repeating its cause is sent once", new RuntimeException(root),
+                        "java.net.ConnectException: Connection refused"),
+                // absent rather than empty, like every other optional fact
+                Arguments.of("no message anywhere sends none", new RuntimeException((String) null), null));
+    }
+
+    // the messages are what a person reads to see why it failed; Go masks them
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("messageCases")
+    @DisplayName("the cause chain's messages travel")
+    void messageIsTheCauseChain(String name, Throwable cause, String expectedMessage) throws Exception {
+        assertEquals(expectedMessage, errorInfoOf(cause).getMetadataMap().get(OlakeFailures.METADATA_MESSAGE));
+    }
+
     // Java sends facts only (class, vendor code, where it was raised). The category is decided in Go.
     @Test
     @DisplayName("no category is sent")
@@ -280,6 +305,7 @@ class OlakeFailuresTest {
         assertEquals(Map.of(
                 OlakeFailures.METADATA_OPERATION, "GET_OR_CREATE_TABLE",
                 OlakeFailures.METADATA_CODE, "42000",
+                OlakeFailures.METADATA_MESSAGE, "table users column ssn is invalid",
                 OlakeFailures.METADATA_ORIGIN, OlakeFailuresTest.class.getName() + ".nothingElseTravels"),
                 info.getMetadataMap());
         assertTrue(info.getReason().startsWith("java.sql."), "reason should be a class name, got " + info.getReason());

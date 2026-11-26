@@ -47,6 +47,12 @@ public final class OlakeFailures {
     /** The error type a REST catalog named in its error response. */
     public static final String METADATA_SERVER_ERROR_TYPE = "server_error_type";
 
+    /**
+     * Every message in the cause chain, as raised. It can hold a credential or a record value,
+     * so Go masks it before it leaves the process and it is never cut here: a cut could split one.
+     */
+    public static final String METADATA_MESSAGE = "message";
+
     /** The operation reported for a failure while the writer starts, before any call is served. */
     public static final String OPERATION_STARTUP = "STARTUP";
 
@@ -123,7 +129,30 @@ public final class OlakeFailures {
                 info.putMetadata(METADATA_SERVER_ERROR_TYPE, httpError.type);
             }
         }
+        String messages = messages(cause);
+        if (!messages.isEmpty()) {
+            info.putMetadata(METADATA_MESSAGE, messages);
+        }
         return info.build();
+    }
+
+    /**
+     * Joins the messages of the cause chain, outermost first. A wrapper built from its cause
+     * repeats the cause's message, so a message the one before it already contains is skipped.
+     */
+    private static String messages(Throwable cause) {
+        StringBuilder chain = new StringBuilder();
+        String last = "";
+        // Bounded like rootCause, so a cycle of causes cannot loop.
+        Throwable t = cause;
+        for (int depth = 0; t != null && depth < 16; depth++, t = t.getCause()) {
+            String message = t.getMessage();
+            if (message != null && !message.isEmpty() && !last.contains(message)) {
+                chain.append(chain.length() == 0 ? "" : " <- ").append(message);
+                last = message;
+            }
+        }
+        return chain.toString();
     }
 
     /**

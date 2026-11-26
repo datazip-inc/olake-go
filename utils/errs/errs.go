@@ -104,6 +104,10 @@ type Failure struct {
 	// ServerErrorType is the error type a REST catalog named in its error response. Set only by
 	// the Iceberg writer.
 	ServerErrorType string `json:"server_error_type,omitempty"`
+
+	// Message is the error text as raised, which can hold a credential or a record value:
+	// telemetry masks it before sending. Set only by the Iceberg writer.
+	Message string `json:"-"`
 }
 
 // Error carries a Failure alongside the error it describes.

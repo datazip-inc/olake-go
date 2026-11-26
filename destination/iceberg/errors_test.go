@@ -139,10 +139,12 @@ func TestClassifyJavaFailure(t *testing.T) {
 			err: javaError(t, "org.apache.iceberg.exceptions.RESTException", map[string]string{
 				javaMetadataHTTPStatus:  "404",
 				javaMetadataServerError: "WarehouseNotFound",
+				javaMetadataMessage:     "Unable to process: A warehouse 'w' does not exist",
 			}),
 			expected: errs.Failure{
 				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "RESTException",
 				HTTPStatus: 404, ServerErrorType: "WarehouseNotFound",
+				Message: "Unable to process: A warehouse 'w' does not exist",
 			},
 		},
 		// a status no rule names stays the catch-all's category
@@ -235,6 +237,67 @@ func TestClassifyJavaFailure(t *testing.T) {
 			}),
 			expected: errs.Failure{
 				Category: errs.AuthFailed, ClassifiedBy: errs.ClassifiedByVendor, Code: "28P01",
+			},
+		},
+		// a class or code shared with unrelated failures: the throw site or the full code decides
+		{
+			name: "only one s3 key set",
+			err: javaError(t, "org.apache.iceberg.exceptions.ValidationException", map[string]string{
+				javaMetadataOrigin: "org.apache.iceberg.aws.s3.S3FileIOProperties.<init>",
+			}),
+			expected: errs.Failure{
+				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "ValidationException",
+				Origin: "S3FileIOProperties.<init>",
+			},
+		},
+		{
+			name: "validation of records",
+			err: javaError(t, "org.apache.iceberg.exceptions.ValidationException", map[string]string{
+				javaMetadataOrigin: "org.apache.iceberg.SchemaUpdate.updateColumn",
+			}),
+			expected: errs.Failure{
+				Category: errs.SchemaUnsupported, ClassifiedBy: errs.ClassifiedByVendor, Code: "ValidationException",
+				Origin: "SchemaUpdate.updateColumn",
+			},
+		},
+		{
+			name: "no driver for the jdbc url",
+			err: javaError(t, "java.sql.SQLException", map[string]string{
+				javaMetadataCode:   "08001",
+				javaMetadataOrigin: "java.sql.DriverManager.getConnection",
+			}),
+			expected: errs.Failure{
+				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "08001",
+				Origin: "DriverManager.getConnection",
+			},
+		},
+		{
+			name: "jdbc connection refused",
+			err: javaError(t, "org.postgresql.util.PSQLException", map[string]string{
+				javaMetadataCode:   "08001",
+				javaMetadataOrigin: "sun.nio.ch.Net.pollConnect",
+			}),
+			expected: errs.Failure{
+				Category: errs.NetworkUnreachable, ClassifiedBy: errs.ClassifiedByVendor, Code: "08001",
+				Origin: "Net.pollConnect",
+			},
+		},
+		{
+			name: "jdbc server rejected the connection",
+			err: javaError(t, "org.postgresql.util.PSQLException", map[string]string{
+				javaMetadataCode: "08004",
+			}),
+			expected: errs.Failure{
+				Category: errs.AuthFailed, ClassifiedBy: errs.ClassifiedByVendor, Code: "08004",
+			},
+		},
+		{
+			name: "jdbc insufficient privilege",
+			err: javaError(t, "org.postgresql.util.PSQLException", map[string]string{
+				javaMetadataCode: "42501",
+			}),
+			expected: errs.Failure{
+				Category: errs.PermissionDenied, ClassifiedBy: errs.ClassifiedByVendor, Code: "42501",
 			},
 		},
 		// a malformed origin is dropped, not half-reported

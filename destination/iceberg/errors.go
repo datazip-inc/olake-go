@@ -30,7 +30,11 @@ const (
 	javaMetadataOperation      = "operation"
 	javaMetadataHTTPStatus     = "http_status"
 	javaMetadataServerError    = "server_error_type"
-	codeCatalogConfigInvalid   = "iceberg.catalog_config_invalid"
+	javaMetadataMessage        = "message"
+	codeS3PathMissing          = "iceberg.s3_path_missing"
+	codeJDBCURLMissing         = "iceberg.jdbc_url_missing"
+	codeRestCatalogURLMissing  = "iceberg.rest_catalog_url_missing"
+	codeHiveURIMissing         = "iceberg.hive_uri_missing"
 	codeUnsupportedCatalogType = "iceberg.unsupported_catalog_type"
 	codeJarNotFound            = "iceberg.jar_not_found"
 	codeJVMStartFailed         = "iceberg.jvm_start_failed"
@@ -207,6 +211,13 @@ var javaExceptions = map[string]errs.Category{
 	"ClassCastException":          errs.InternalError,
 }
 
+// originCategories maps a throw site, as Class.method, to a category where the class or code
+// raised there is shared with unrelated failures and so files it wrongly.
+var originCategories = map[string]errs.Category{
+	"S3FileIOProperties.<init>":   errs.ConfigInvalid, // ValidationException: only one of the two S3 keys is set
+	"DriverManager.getConnection": errs.ConfigInvalid, // 08001: no driver for the database the JDBC URL names
+}
+
 // sqlStateClasses maps the two-character SQLSTATE class a JDBC catalog reports to a category.
 // Only the class: it is standardized across vendors, while the last three characters are
 // vendor-specific and a catalog can be any database.
@@ -221,6 +232,13 @@ var sqlStateClasses = map[string]errs.Category{
 	"23": errs.CatalogError,        // integrity constraint violation
 	"25": errs.CatalogError,        // invalid transaction state
 	"0A": errs.UnsupportedFeature,  // feature not supported
+}
+
+// sqlStates maps a full SQLSTATE to a category where its class alone files it wrongly or not at
+// all. Read before sqlStateClasses.
+var sqlStates = map[string]errs.Category{
+	"08004": errs.AuthFailed,       // the server answered and refused the connection: no password was given
+	"42501": errs.PermissionDenied, // insufficient privilege
 }
 
 // sqlStateClass returns the class of a SQLSTATE, or "" for anything that is not one.
@@ -360,8 +378,9 @@ func fromErrorInfo(grpcStatus *status.Status) *errs.Failure {
 		// Absent when the failure was not an HTTP response; anything unparsable is dropped the same way.
 		f.HTTPStatus, _ = strconv.Atoi(metadata[javaMetadataHTTPStatus])
 		f.ServerErrorType = metadata[javaMetadataServerError]
+		f.Message = metadata[javaMetadataMessage]
 
-		if category, mapped := javaCategory(exception, code, metadata[javaMetadataCode], f.ServerErrorType, f.HTTPStatus); mapped {
+		if category, mapped := javaCategory(exception, code, metadata[javaMetadataCode], f.ServerErrorType, f.Origin, f.HTTPStatus); mapped {
 			f.Category, f.ClassifiedBy = category, errs.ClassifiedByVendor
 		} else {
 			// No rule covers it yet. The class name is what a rule would be written from.
@@ -373,7 +392,10 @@ func fromErrorInfo(grpcStatus *status.Status) *errs.Failure {
 }
 
 // javaCategory runs the writer's evidence through each table, most specific first.
-func javaCategory(exception, code, sqlState, serverErrorType string, httpStatus int) (errs.Category, bool) {
+func javaCategory(exception, code, sqlState, serverErrorType, origin string, httpStatus int) (errs.Category, bool) {
+	if category, mapped := originCategories[origin]; mapped {
+		return category, true
+	}
 	// Iceberg's catch-all for a status it has no class for. The server's error type says what it
 	// was where it names an exception the table knows; otherwise the status does.
 	if exception == "RESTException" {
@@ -395,6 +417,9 @@ func javaCategory(exception, code, sqlState, serverErrorType string, httpStatus 
 	}
 	// A JDBC catalog raises classes this table cannot enumerate, but supplies a SQLSTATE
 	// whose class is standardized — the same code space the SQL sources report.
+	if category, mapped := sqlStates[sqlState]; mapped {
+		return category, true
+	}
 	category, mapped := sqlStateClasses[sqlStateClass(sqlState)]
 	return category, mapped
 }

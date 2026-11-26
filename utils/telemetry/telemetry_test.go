@@ -250,7 +250,7 @@ func TestTrackFailureOmitsAbsentFields(t *testing.T) {
 			name:           "no sync id outside sync",
 			syncID:         "",
 			failure:        errs.Failure{Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByPrecondition},
-			expectedAbsent: []string{"sync_id", "code", "error_type", "catalog_type", "origin", "operation", "http_status", "server_error_type"},
+			expectedAbsent: []string{"sync_id", "code", "error_type", "catalog_type", "origin", "operation", "http_status", "server_error_type", "error_message"},
 		},
 		{
 			name:           "unclassified carries the type but no code",
@@ -279,6 +279,282 @@ func TestTrackFailureOmitsAbsentFields(t *testing.T) {
 				assert.NotContains(t, events[0], key, "property %q should be omitted, not empty", key)
 			}
 			assert.Equal(t, string(tc.failure.Category), events[0]["category"])
+		})
+	}
+}
+
+// TestMaskMessage covers what must never leave the process: addresses, hosts, storage paths,
+// user names, passwords and record values, with the rest left readable.
+func TestMaskMessage(t *testing.T) {
+	configured := &types.WriterConfig{Type: types.Iceberg, WriterConfig: map[string]any{
+		"catalog_type":     "jdbc",
+		"jdbc_username":    "dbadmin",
+		"jdbc_password":    "p@ss word",
+		"jdbc_url":         "jdbc:postgresql://db.internal:5432/lake?user=quser&password=q pw",
+		"rest_catalog_url": "https://catalog.corp.example/api",
+		"s3_endpoint":      "http://minio.corp.example:9000",
+		"hive_uri":         "thrift://hms-a.corp.example:9083,thrift://hms-b.corp.example:9083",
+		"iceberg_s3_path":  "s3://lake-bucket/prod",
+		"hive_clients":     5,
+	}}
+	severalHosts := &types.WriterConfig{Type: types.Iceberg, WriterConfig: map[string]any{
+		"jdbc_url":    "jdbc:postgresql://admin:p@ss@pg-a.corp.example:5432,pg-b.corp.example:5432/lake",
+		"s3_endpoint": "minio.corp.example:9000",
+	}}
+
+	testCases := []struct {
+		name              string
+		destinationConfig *types.WriterConfig
+		message           string
+		expected          string
+	}{
+		// the values the config holds, exactly as written
+		{
+			name:              "configured url, spaces included",
+			destinationConfig: configured,
+			message:           `Failed to connect: jdbc:postgresql://db.internal:5432/lake?user=quser&password=q pw <- refused`,
+			expected:          `Failed to connect: <URL> <- refused`,
+		},
+		{
+			name:              "configured username",
+			destinationConfig: configured,
+			message:           `no entry for dbadmin`,
+			expected:          `no entry for xxx`,
+		},
+		{
+			name:              "configured password",
+			destinationConfig: configured,
+			message:           `server said p@ss word is wrong`,
+			expected:          `server said xxx is wrong`,
+		},
+		// an address the config does not hold
+		{
+			name:              "any other jdbc url",
+			destinationConfig: configured,
+			message:           `No suitable driver found for jdbc:mysql://root:hunter2@h:3306/db`,
+			expected:          `No suitable driver found for <URL>`,
+		},
+		{
+			name:              "catalog url",
+			destinationConfig: configured,
+			message:           `Connect to https://catalog.corp.example failed: Connection refused`,
+			expected:          `Connect to <URL> failed: Connection refused`,
+		},
+		{
+			name:              "storage path",
+			destinationConfig: configured,
+			message:           `Location does not exist: s3a://other-bucket/db/t/metadata/00000-8e2b.metadata.json <- gone`,
+			expected:          `Location does not exist: <URL> <- gone`,
+		},
+		{
+			name:              "path under the configured storage path",
+			destinationConfig: configured,
+			message:           `Location does not exist: s3://lake-bucket/prod/db/orders/metadata/00000-8e2b.metadata.json <- gone`,
+			expected:          `Location does not exist: <URL> <- gone`,
+		},
+		{
+			name:              "no destination config",
+			destinationConfig: nil,
+			message:           `Failed to connect: jdbc:postgresql://u:p@h/db`,
+			expected:          `Failed to connect: <URL>`,
+		},
+		// a configured host named alone, with whatever is attached to it
+		{
+			name:              "configured host alone",
+			destinationConfig: configured,
+			message:           `Connection to db.internal:5432 refused <- minio.corp.example: nodename nor servname provided`,
+			expected:          `Connection to <HOST> refused <- <HOST> nodename nor servname provided`,
+		},
+		{
+			name:              "each of several metastores",
+			destinationConfig: configured,
+			message:           `UnknownHostException: hms-a.corp.example <- then hms-b.corp.example: unknown`,
+			expected:          `UnknownHostException: <HOST> <- then <HOST> unknown`,
+		},
+		{
+			name:              "configured host with what it resolved to",
+			destinationConfig: configured,
+			message:           `Connect to minio.corp.example:9000 [minio.corp.example/10.1.2.3] failed`,
+			expected:          `Connect to <HOST> <HOST> failed`,
+		},
+		{
+			name:              "configured bucket alone",
+			destinationConfig: configured,
+			message:           `The bucket lake-bucket is in another region`,
+			expected:          `The bucket <HOST> is in another region`,
+		},
+		{
+			name:              "first of several jdbc hosts, after a password holding @",
+			destinationConfig: severalHosts,
+			message:           `Connection to pg-a.corp.example:5432 refused`,
+			expected:          `Connection to <HOST> refused`,
+		},
+		{
+			name:              "later jdbc host and an endpoint without a scheme",
+			destinationConfig: severalHosts,
+			message:           `Connection to pg-b.corp.example:5432 refused <- minio.corp.example: unknown`,
+			expected:          `Connection to <HOST> refused <- <HOST> unknown`,
+		},
+		// a message that mentions a password is replaced whole
+		{
+			name:              "password rejected",
+			destinationConfig: configured,
+			message:           `Failed to connect: jdbc:postgresql://h/db <- FATAL: password authentication failed for user "alice"`,
+			expected:          passwordMessage,
+		},
+		{
+			name:              "password missing",
+			destinationConfig: configured,
+			message:           `The server requested SCRAM-based authentication, but no Password was provided.`,
+			expected:          passwordMessage,
+		},
+		// shapes no config value matches
+		{
+			name:              "ip address",
+			destinationConfig: configured,
+			message:           `Connect to minio [minio/10.1.2.3, minio/0:0:0:0:0:0:0:1] failed`,
+			expected:          `Connect to minio [minio/<HOST>, minio/<HOST>] failed`,
+		},
+		{
+			name:              "postgres user",
+			destinationConfig: configured,
+			message:           `FATAL: no pg_hba.conf entry for host "10.0.0.1", user "alice", database "lake", no encryption`,
+			expected:          `FATAL: no pg_hba.conf entry for host "<HOST>", user xxx, database "lake", no encryption`,
+		},
+		{
+			name:              "postgres role",
+			destinationConfig: configured,
+			message:           `FATAL: role "alice" is not permitted to log in`,
+			expected:          `FATAL: role xxx is not permitted to log in`,
+		},
+		{
+			name:              "aws user and resource",
+			destinationConfig: configured,
+			message:           `User: arn:aws:iam::123456789012:user/carol is not authorized to perform: glue:GetDatabase on resource: arn:aws:glue:us-east-1:123456789012:catalog`,
+			expected:          `User: xxx is not authorized to perform: glue:GetDatabase on resource: xxx`,
+		},
+		// record values, at the places the writers quote them
+		{
+			name:              "java writer value",
+			destinationConfig: configured,
+			message:           "Failed to parse JSON string for field email value string_value: \"a@b.com\"\n exceptipn: java.lang.RuntimeException: Failed to parse value for field email as type int, raw value: string_value: \"a@b.com\"",
+			expected:          `Failed to parse JSON string for field email value xxx`,
+		},
+		{
+			name:              "java writer value, field name with a space",
+			destinationConfig: configured,
+			message:           `Failed to parse JSON string for field first name value string_value: "john"`,
+			expected:          `Failed to parse JSON string for field first name value xxx`,
+		},
+		{
+			name:              "java writer value, cause alone",
+			destinationConfig: configured,
+			message:           `Failed to parse value for field email as type int, raw value: string_value: "a@b.com" <- For input string: "a@b.com"`,
+			expected:          `Failed to parse value for field email as type int, raw value: xxx`,
+		},
+		{
+			name:              "iceberg decimal value",
+			destinationConfig: configured,
+			message:           `Failed to write data to table: db.orders <- Cannot write value as decimal(10,2), too large: 12345678901.23`,
+			expected:          `Failed to write data to table: db.orders <- Cannot write value as decimal(10,2), too large: xxx`,
+		},
+		{
+			name:              "iceberg value of any type",
+			destinationConfig: configured,
+			message:           `Cannot write value as string, too long: john doe`,
+			expected:          `Cannot write value as string, too long: xxx`,
+		},
+		// several layers joined by " <- ", each holding something different to mask
+		{
+			name:              "address with user and password, host and role across layers",
+			destinationConfig: configured,
+			message:           `Failed to create table db.orders <- Failed to connect: jdbc:postgresql://quser:s3cr3t@db.internal:5432/lake <- Connect to minio.corp.example:9000 [minio.corp.example/10.1.2.3] failed: Connection refused <- FATAL: role "alice" is not permitted to log in`,
+			expected:          `Failed to create table db.orders <- Failed to connect: <URL> <- Connect to <HOST> <HOST> failed: Connection refused <- FATAL: role xxx is not permitted to log in`,
+		},
+		{
+			name:              "endpoint with user and password, aws user and metastore host across layers",
+			destinationConfig: configured,
+			message:           `Failed to write data to table: db.orders <- Unable to execute HTTP request: http://admin:s3cr3t@minio.corp.example:9000/lake-bucket/prod/data/f.parquet <- User: arn:aws:iam::123456789012:user/carol is not authorized to perform: s3:PutObject <- Connection to hms-b.corp.example:9083 refused by dbadmin`,
+			expected:          `Failed to write data to table: db.orders <- Unable to execute HTTP request: <URL> <- User: xxx is not authorized to perform: s3:PutObject <- Connection to <HOST> refused by xxx`,
+		},
+		// what has to stay readable
+		{
+			name:              "class names and status",
+			destinationConfig: configured,
+			message:           `software.amazon.awssdk.core.exception.SdkClientException: Unable to load region (Service: S3, Status Code: 403)`,
+			expected:          `software.amazon.awssdk.core.exception.SdkClientException: Unable to load region (Service: S3, Status Code: 403)`,
+		},
+		{
+			name:              "whitespace is collapsed",
+			destinationConfig: configured,
+			message:           "line one\n\tline two",
+			expected:          `line one line two`,
+		},
+		{
+			name:              "empty",
+			destinationConfig: configured,
+			message:           ``,
+			expected:          ``,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, maskMessage(tc.message, tc.destinationConfig))
+		})
+	}
+}
+
+// TestTrackFailureMessage covers the message's way onto the event: masked, then split so
+// Mixpanel's 255-character limit does not cut it, and bounded.
+func TestTrackFailureMessage(t *testing.T) {
+	markInitDone()
+	destination := &types.WriterConfig{Type: types.Iceberg, WriterConfig: map[string]any{"catalog_type": "jdbc"}}
+
+	testCases := []struct {
+		name           string
+		message        string
+		expectedValues map[string]any
+		expectedAbsent []string
+	}{
+		{
+			name:           "short message is one property, masked",
+			message:        `rejected user "alice"`,
+			expectedValues: map[string]any{"error_message": "rejected user xxx"},
+			expectedAbsent: []string{"error_message_2"},
+		},
+		{
+			name:    "long message continues in numbered properties",
+			message: strings.Repeat("a", 255) + strings.Repeat("b", 10),
+			expectedValues: map[string]any{
+				"error_message":   strings.Repeat("a", 255),
+				"error_message_2": strings.Repeat("b", 10),
+			},
+			expectedAbsent: []string{"error_message_3"},
+		},
+		{
+			name:           "bounded at four properties",
+			message:        strings.Repeat("a ", 2000),
+			expectedAbsent: []string{"error_message_5"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			capture := stubClient(t)
+			TrackFailure("check", "iceberg", "", destination, errs.Failure{
+				Category: errs.CatalogError, ClassifiedBy: errs.ClassifiedByVendor, Message: tc.message,
+			})
+			drain()
+
+			events := capture.events(t)
+			require.Len(t, events, 1)
+			for key, expected := range tc.expectedValues {
+				assert.Equal(t, expected, events[0][key], "property %q", key)
+			}
+			for _, key := range tc.expectedAbsent {
+				assert.NotContains(t, events[0], key, "property %q should be omitted", key)
+			}
 		})
 	}
 }

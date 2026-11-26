@@ -94,7 +94,7 @@ type Config struct {
 
 func (c *Config) Validate() error {
 	if c.IcebergS3Path == "" {
-		return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+		return errs.Precondition(errs.ConfigInvalid, codeS3PathMissing,
 			fmt.Errorf("s3_path is required"))
 	}
 
@@ -154,17 +154,17 @@ func (c *Config) Validate() error {
 	switch c.CatalogType {
 	case JDBCCatalog:
 		if c.JDBCUrl == "" {
-			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+			return errs.Precondition(errs.ConfigInvalid, codeJDBCURLMissing,
 				fmt.Errorf("jdbc_url is required when using JDBC catalog"))
 		}
 	case RestCatalog:
 		if c.RestCatalogURL == "" {
-			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+			return errs.Precondition(errs.ConfigInvalid, codeRestCatalogURLMissing,
 				fmt.Errorf("rest_catalog_url is required when using REST catalog"))
 		}
 	case HiveCatalog:
 		if c.HiveURI == "" {
-			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+			return errs.Precondition(errs.ConfigInvalid, codeHiveURIMissing,
 				fmt.Errorf("hive_uri is required when using Hive catalog"))
 		}
 	case GlueCatalog:
