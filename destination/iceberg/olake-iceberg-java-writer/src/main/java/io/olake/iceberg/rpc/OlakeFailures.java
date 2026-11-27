@@ -1,6 +1,5 @@
 package io.olake.iceberg.rpc;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.SQLException;
@@ -82,13 +81,18 @@ public final class OlakeFailures {
      * @param message   the description an operator reads; unchanged from what is logged
      */
     public static StatusRuntimeException toStatusException(Throwable cause, String operation, String message) {
-        com.google.rpc.Status status = com.google.rpc.Status.newBuilder()
-                .setCode(Code.INTERNAL.getNumber())
-                .setMessage(message == null ? "" : message)
-                .addDetails(Any.pack(describe(cause, operation)))
-                .build();
+        try {
+            com.google.rpc.Status status = com.google.rpc.Status.newBuilder()
+                    .setCode(Code.INTERNAL.getNumber())
+                    .setMessage(message == null ? "" : message)
+                    .addDetails(Any.pack(describe(cause, operation)))
+                    .build();
 
-        return StatusProto.toStatusRuntimeException(status);
+            return StatusProto.toStatusRuntimeException(status);
+        } catch (RuntimeException e) {
+            // The detail only feeds telemetry: the call must still fail with its own error.
+            return io.grpc.Status.INTERNAL.withDescription(message).asRuntimeException();
+        }
     }
 
     /**
@@ -99,7 +103,8 @@ public final class OlakeFailures {
     public static void writeStartupReport(Throwable cause, String path) {
         try {
             Files.write(Paths.get(path), describe(cause, OPERATION_STARTUP).toByteArray());
-        } catch (IOException | RuntimeException e) {
+        } catch (Throwable e) {
+            // Throwable, so nothing raised here can keep the writer from exiting.
             System.err.println("could not write the startup failure report: " + e);
         }
     }
@@ -174,16 +179,23 @@ public final class OlakeFailures {
 
     /**
      * Names the method that raised t: the first stack frame outside t's own class, which skips
-     * its builder. A class and method name from code, never a value. Null when the JVM dropped
-     * the stack trace.
+     * its builder, and for an AWS service error outside the SDK too. A class and method name
+     * from code, never a value. Null when the JVM dropped the stack trace.
      */
     private static String origin(Throwable t) {
         String own = t.getClass().getName();
+        // An AWS service's answer is raised at one place in the SDK whatever the request was, so
+        // the caller is what names it.
+        boolean serviceAnswer = t instanceof AwsServiceException;
         for (StackTraceElement frame : t.getStackTrace()) {
             String frameClass = frame.getClassName();
-            if (!frameClass.equals(own) && !frameClass.startsWith(own + "$")) {
-                return frameClass + "." + frame.getMethodName();
+            if (frameClass.equals(own) || frameClass.startsWith(own + "$")) {
+                continue;
             }
+            if (serviceAnswer && frameClass.startsWith("software.amazon.awssdk.")) {
+                continue;
+            }
+            return frameClass + "." + frame.getMethodName();
         }
         return null;
     }

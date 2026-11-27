@@ -248,9 +248,20 @@ class OlakeFailuresTest {
         Throwable noStack = new IllegalStateException("x");
         noStack.setStackTrace(new StackTraceElement[0]);
 
+        // every service answer is raised at the same SDK method; the Iceberg call above it differs
+        Throwable serviceAnswer = s3Exception("AccessDenied");
+        serviceAnswer.setStackTrace(new StackTraceElement[] {
+                new StackTraceElement("software.amazon.awssdk.core.internal.http.pipeline.stages.utils.RetryableStageHelper",
+                        "retryPolicyDisallowedRetryException", "RetryableStageHelper.java", 1),
+                new StackTraceElement("software.amazon.awssdk.services.glue.DefaultGlueClient", "createDatabase",
+                        "DefaultGlueClient.java", 1),
+                new StackTraceElement("org.apache.iceberg.aws.glue.GlueCatalog", "createNamespace", "GlueCatalog.java", 1)});
+
         String test = OlakeFailuresTest.class.getName();
         return Stream.of(
                 Arguments.of("raised directly", thrownHere, test + ".originCases"),
+                Arguments.of("an aws service answer names the call that made the request", serviceAnswer,
+                        "org.apache.iceberg.aws.glue.GlueCatalog.createNamespace"),
                 // S3Exception$BuilderImpl.build is the top frame and must be skipped
                 Arguments.of("raised through a builder", builtHere(), test + ".s3Exception"),
                 Arguments.of("raised below a wrapper", wrapped, test + ".s3Exception"),

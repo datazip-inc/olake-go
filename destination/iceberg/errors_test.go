@@ -62,7 +62,7 @@ func TestClassifyJavaFailure(t *testing.T) {
 				javaMetadataOperation: "GET_OR_CREATE_TABLE",
 			}),
 			expected: errs.Failure{
-				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "SdkClientException",
+				Category: errs.AuthFailed, ClassifiedBy: errs.ClassifiedByVendor, Code: "SdkClientException",
 				Origin: "AwsCredentialsProviderChain.resolveCredentials", Operation: "GET_OR_CREATE_TABLE",
 			},
 		},
@@ -126,10 +126,22 @@ func TestClassifyJavaFailure(t *testing.T) {
 			name: "rest server type names a known exception",
 			err: javaError(t, "org.apache.iceberg.exceptions.RESTException", map[string]string{
 				javaMetadataHTTPStatus:  "404",
-				javaMetadataServerError: "NoSuchWarehouseException",
+				javaMetadataServerError: "NoSuchNamespaceException",
 			}),
 			expected: errs.Failure{
 				Category: errs.ObjectNotFound, ClassifiedBy: errs.ClassifiedByVendor, Code: "RESTException",
+				HTTPStatus: 404, ServerErrorType: "NoSuchNamespaceException",
+			},
+		},
+		// a wrong warehouse is one category whichever name the server gives it
+		{
+			name: "rest warehouse the catalog does not have",
+			err: javaError(t, "org.apache.iceberg.exceptions.RESTException", map[string]string{
+				javaMetadataHTTPStatus:  "404",
+				javaMetadataServerError: "NoSuchWarehouseException",
+			}),
+			expected: errs.Failure{
+				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "RESTException",
 				HTTPStatus: 404, ServerErrorType: "NoSuchWarehouseException",
 			},
 		},
@@ -298,6 +310,92 @@ func TestClassifyJavaFailure(t *testing.T) {
 			}),
 			expected: errs.Failure{
 				Category: errs.PermissionDenied, ClassifiedBy: errs.ClassifiedByVendor, Code: "42501",
+			},
+		},
+		// a token endpoint's answers, which Iceberg raises as one class
+		{
+			name: "oauth credential invalid or expired",
+			err: javaError(t, "org.apache.iceberg.exceptions.BadRequestException", map[string]string{
+				javaMetadataOrigin:      "org.apache.iceberg.rest.ErrorHandlers$OAuthErrorHandler.accept",
+				javaMetadataHTTPStatus:  "400",
+				javaMetadataServerError: "invalid_grant",
+			}),
+			expected: errs.Failure{
+				Category: errs.AuthFailed, ClassifiedBy: errs.ClassifiedByVendor, Code: "BadRequestException",
+				Origin: "ErrorHandlers$OAuthErrorHandler.accept", HTTPStatus: 400, ServerErrorType: "invalid_grant",
+			},
+		},
+		{
+			name: "oauth client not allowed this grant",
+			err: javaError(t, "org.apache.iceberg.exceptions.BadRequestException", map[string]string{
+				javaMetadataHTTPStatus:  "400",
+				javaMetadataServerError: "unauthorized_client",
+			}),
+			expected: errs.Failure{
+				Category: errs.PermissionDenied, ClassifiedBy: errs.ClassifiedByVendor, Code: "BadRequestException",
+				HTTPStatus: 400, ServerErrorType: "unauthorized_client",
+			},
+		},
+		{
+			name: "oauth scope wrong stays a config mistake",
+			err: javaError(t, "org.apache.iceberg.exceptions.BadRequestException", map[string]string{
+				javaMetadataHTTPStatus:  "400",
+				javaMetadataServerError: "invalid_scope",
+			}),
+			expected: errs.Failure{
+				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "BadRequestException",
+				HTTPStatus: 400, ServerErrorType: "invalid_scope",
+			},
+		},
+		// one class, different meanings by throw site
+		{
+			name: "storage the writer has no file system for",
+			err: javaError(t, "java.lang.ClassNotFoundException", map[string]string{
+				javaMetadataOrigin: "org.apache.hadoop.conf.Configuration.getClassByName",
+			}),
+			expected: errs.Failure{
+				Category: errs.UnsupportedFeature, ClassifiedBy: errs.ClassifiedByVendor, Code: "ClassNotFoundException",
+				Origin: "Configuration.getClassByName",
+			},
+		},
+		{
+			name: "class missing from the writer itself",
+			err: javaError(t, "java.lang.ClassNotFoundException", map[string]string{
+				javaMetadataOrigin: "java.net.URLClassLoader.findClass",
+			}),
+			expected: errs.Failure{
+				Category: errs.InternalError, ClassifiedBy: errs.ClassifiedByVendor, Code: "ClassNotFoundException",
+				Origin: "URLClassLoader.findClass",
+			},
+		},
+		{
+			name: "hive metastore unreachable",
+			err: javaError(t, "org.apache.hadoop.hive.metastore.api.MetaException", map[string]string{
+				javaMetadataOrigin: "org.apache.hadoop.hive.metastore.HiveMetaStoreClient.open",
+			}),
+			expected: errs.Failure{
+				Category: errs.NetworkUnreachable, ClassifiedBy: errs.ClassifiedByVendor, Code: "MetaException",
+				Origin: "HiveMetaStoreClient.open",
+			},
+		},
+		{
+			name: "hive metastore refused the request",
+			err: javaError(t, "org.apache.hadoop.hive.metastore.api.MetaException", map[string]string{
+				javaMetadataOrigin: "org.apache.hadoop.hive.metastore.api.ThriftHiveMetastore$create_database_result$create_database_resultStandardScheme.read",
+			}),
+			expected: errs.Failure{
+				Category: errs.CatalogError, ClassifiedBy: errs.ClassifiedByVendor, Code: "MetaException",
+				Origin: "ThriftHiveMetastore$create_database_result$create_database_resultStandardScheme.read",
+			},
+		},
+		{
+			name: "catalog url without a scheme",
+			err: javaError(t, "org.apache.hc.core5.http.ProtocolException", map[string]string{
+				javaMetadataOrigin: "org.apache.hc.client5.http.impl.routing.DefaultRoutePlanner.determineRoute",
+			}),
+			expected: errs.Failure{
+				Category: errs.ConfigInvalid, ClassifiedBy: errs.ClassifiedByVendor, Code: "ProtocolException",
+				Origin: "DefaultRoutePlanner.determineRoute",
 			},
 		},
 		// a malformed origin is dropped, not half-reported

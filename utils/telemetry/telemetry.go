@@ -267,7 +267,7 @@ const (
 	hostMask  = "<HOST>"
 	valueMask = "xxx"
 	// passwordMessage replaces a whole message that mentions a password.
-	passwordMessage = "error most likely due to password error"
+	passwordMessage = "error most likely due to wrong password"
 )
 
 // Mixpanel cuts a string property at 255 characters, so the message is spread over a few.
