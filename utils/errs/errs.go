@@ -91,6 +91,23 @@ type Failure struct {
 	// has a source and a destination and which one failed is not otherwise recoverable. Empty
 	// where the shared rules matched, since they cannot know whose endpoint was on the far end.
 	Component string `json:"component,omitempty"`
+
+	// Origin is the Class.method that raised the root cause, and Operation the call being served.
+	// Set only by the Iceberg writer.
+	Origin    string `json:"origin,omitempty"`
+	Operation string `json:"operation,omitempty"`
+
+	// HTTPStatus is the status the catalog or object storage answered with, where the failure was
+	// an HTTP response. Set only by the Iceberg writer.
+	HTTPStatus int `json:"http_status,omitempty"`
+
+	// ServerErrorType is the error type a REST catalog named in its error response. Set only by
+	// the Iceberg writer.
+	ServerErrorType string `json:"server_error_type,omitempty"`
+
+	// Message is the error text as raised, which can hold a credential or a record value:
+	// telemetry masks it before sending. Set only by the Iceberg writer.
+	Message string `json:"-"`
 }
 
 // Error carries a Failure alongside the error it describes.

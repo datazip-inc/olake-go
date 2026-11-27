@@ -36,6 +36,8 @@ public class OlakeRpcServer {
 
     public static void main(String[] args) throws InterruptedException {
         Server server;
+        // Where Go reads why startup failed; set from the config, so null until that parses.
+        String failureReport = null;
         try {
             if (args.length < 1) {
                 LOGGER.error("Please provide a JSON config as an argument.");
@@ -48,6 +50,10 @@ public class OlakeRpcServer {
                     new TypeReference<Map<String, Object>>() {
                     });
             LOGGER.info("Logs will be output to console only");
+
+            // Removed so it never reaches the catalog or Hadoop configuration.
+            Object reportPath = configMap.remove("failure-report-path");
+            failureReport = reportPath == null ? null : reportPath.toString();
 
             // Only catalog/storage-level config is consumed here. Stream-level context
             // (namespace, upsert, partition-fields, identifier-fields) comes per-request.
@@ -111,6 +117,9 @@ public class OlakeRpcServer {
             String detail = cause.getMessage() == null ? cause.toString() : cause.getMessage();
             System.err.println("Iceberg writer failed to start [" + cause.getClass().getName() + "]: " + detail);
             t.printStackTrace();
+            if (failureReport != null) {
+                OlakeFailures.writeStartupReport(t, failureReport);
+            }
             System.exit(1);
             return;
         }

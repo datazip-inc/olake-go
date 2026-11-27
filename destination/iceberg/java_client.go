@@ -41,7 +41,7 @@ type serverInstance struct {
 // at startup. Per-stream concepts (namespace, upsert, identifier-fields,
 // partition spec) are deliberately *not* included here — they ride on every
 // per-request payload instead. See StreamMetaCtx.
-func getServerConfigJSON(config *Config, port int, arrowWriterEnabled bool, gcpCredsTemp string) ([]byte, error) {
+func getServerConfigJSON(config *Config, port int, arrowWriterEnabled bool, gcpCredsTemp, failureReport string) ([]byte, error) {
 	serverConfig := map[string]interface{}{
 		"port":                 fmt.Sprintf("%d", port),
 		"warehouse":            config.IcebergS3Path,
@@ -81,7 +81,8 @@ func getServerConfigJSON(config *Config, port int, arrowWriterEnabled bool, gcpC
 		serverConfig["hive.metastore.sasl.enabled"] = strconv.FormatBool(config.HiveSaslEnabled)
 		serverConfig["engine.hive.enabled"] = "true"
 	case RestCatalog:
-		serverConfig["catalog-impl"] = "org.apache.iceberg.rest.RESTCatalog"
+		// Iceberg's RESTCatalog, recording the HTTP response of each failed call.
+		serverConfig["catalog-impl"] = "io.olake.iceberg.OlakeRESTCatalog"
 		serverConfig["uri"] = config.RestCatalogURL
 		serverConfig["rest.sigv4-enabled"] = strconv.FormatBool(config.RestSigningV4)
 		addMapKeyIfNotEmpty("rest.signing-name", config.RestSigningName)
@@ -128,6 +129,8 @@ func getServerConfigJSON(config *Config, port int, arrowWriterEnabled bool, gcpC
 	serverConfig["s3.client-factory-impl"] = olakeS3ClientFactoryClass
 	serverConfig["io-impl"] = "org.apache.iceberg.io.ResolvingFileIO"
 	serverConfig["s3.ssl-enabled"] = utils.Ternary(config.S3UseSSL, "true", "false").(string)
+	// Read by the writer itself, never passed on to the catalog.
+	addMapKeyIfNotEmpty("failure-report-path", failureReport)
 	// Marshal the config to JSON
 	return json.Marshal(serverConfig)
 }
@@ -173,7 +176,11 @@ func startServer(config *Config) (*serverInstance, error) {
 		return nil, err
 	}
 
-	configJSON, err := getServerConfigJSON(config, port, config.UseArrowWrites, gcpCredsTemp)
+	// The writer records why it failed to start here: no gRPC call exists yet to carry it.
+	failureReport := startupReportPath()
+	defer os.Remove(failureReport)
+
+	configJSON, err := getServerConfigJSON(config, port, config.UseArrowWrites, gcpCredsTemp, failureReport)
 	if err != nil {
 		if gcpCredsTemp != "" {
 			os.Remove(gcpCredsTemp)
@@ -224,7 +231,7 @@ func startServer(config *Config) (*serverInstance, error) {
 		if gcpCredsTemp != "" {
 			os.Remove(gcpCredsTemp)
 		}
-		return nil, fmt.Errorf("%w: %w", errJVMStart, err)
+		return nil, withStartupReport(fmt.Errorf("%w: %w", errJVMStart, err), failureReport)
 	}
 
 	conn, err := grpc.NewClient(fmt.Sprintf("%s:%s", config.ServerHost, strconv.Itoa(port)),
