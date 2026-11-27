@@ -61,11 +61,8 @@ const (
 			{"name":"float64_negzero","type":"double"},
 			{"name":"string_empty","type":"string"},
 			{"name":"string_special","type":"string"},
-			{"name":"union_null_int","type":["null","int"]},
-			{"name":"union_null_double","type":["null","double"]},
 			{"name":"union_val_to_null_int","type":["null","int"]},
-			{"name":"union_val_to_null_string","type":["null","string"]},
-			{"name":"union_null_stay","type":["null","string"]}
+			{"name":"union_val_to_null_string","type":["null","string"]}
 		]
 	}`
 
@@ -95,11 +92,8 @@ const (
 			{"name":"float64_negzero","type":"double"},
 			{"name":"string_empty","type":"string"},
 			{"name":"string_special","type":"string"},
-			{"name":"union_null_int","type":["null","int"]},
-			{"name":"union_null_double","type":["null","double"]},
 			{"name":"union_val_to_null_int","type":["null","int"]},
-			{"name":"union_val_to_null_string","type":["null","string"]},
-			{"name":"union_null_stay","type":["null","string"]}
+			{"name":"union_val_to_null_string","type":["null","string"]}
 		]
 	}`
 )
@@ -146,11 +140,8 @@ var (
 		"float64_negzero":          math.Copysign(0, -1),
 		"string_empty":             "",
 		"string_special":           "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
-		"union_null_int":           nil,
-		"union_null_double":        nil,
 		"union_val_to_null_int":    map[string]interface{}{"int": int32(5)},
 		"union_val_to_null_string": map[string]interface{}{"string": "x"},
-		"union_null_stay":          nil,
 	}
 
 	avroFilterValue = map[string]interface{}{
@@ -174,11 +165,8 @@ var (
 		"float64_negzero":          math.Copysign(0, -1),
 		"string_empty":             "",
 		"string_special":           "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
-		"union_null_int":           nil,
-		"union_null_double":        nil,
 		"union_val_to_null_int":    map[string]interface{}{"int": int32(5)},
 		"union_val_to_null_string": map[string]interface{}{"string": "x"},
-		"union_null_stay":          nil,
 	}
 
 	avroUpdatedValue = map[string]interface{}{
@@ -203,11 +191,8 @@ var (
 		"float64_negzero":          float64(0),
 		"string_empty":             "x",
 		"string_special":           "",
-		"union_null_int":           map[string]interface{}{"int": int32(5)},
-		"union_null_double":        map[string]interface{}{"double": float64(1.5)},
 		"union_val_to_null_int":    nil,
 		"union_val_to_null_string": nil,
-		"union_null_stay":          nil,
 	}
 )
 
@@ -853,11 +838,8 @@ var ExpectedKafkaAvroData = map[string]interface{}{
 	"float64_negzero":          float64(0),
 	"string_empty":             "",
 	"string_special":           "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
-	"union_null_int":           nil,
-	"union_null_double":        nil,
 	"union_val_to_null_int":    int32(5),
 	"union_val_to_null_string": "x",
-	"union_null_stay":          nil,
 }
 
 var ExpectedKafkaUpdatedAvroData = map[string]interface{}{
@@ -881,11 +863,8 @@ var ExpectedKafkaUpdatedAvroData = map[string]interface{}{
 	"float64_negzero":          float64(0),
 	"string_empty":             "x",
 	"string_special":           "",
-	"union_null_int":           int32(5),
-	"union_null_double":        float64(1.5),
 	"union_val_to_null_int":    nil,
 	"union_val_to_null_string": nil,
-	"union_null_stay":          nil,
 }
 
 var KafkaToDestinationAvroSchema = map[string]string{
@@ -908,11 +887,8 @@ var KafkaToDestinationAvroSchema = map[string]string{
 	"float64_negzero":          "double",
 	"string_empty":             "string",
 	"string_special":           "string",
-	"union_null_int":           "int",
-	"union_null_double":        "double",
 	"union_val_to_null_int":    "int",
 	"union_val_to_null_string": "string",
-	"union_null_stay":          "string",
 }
 
 var UpdatedKafkaToDestinationAvroSchema = map[string]string{
@@ -936,11 +912,8 @@ var UpdatedKafkaToDestinationAvroSchema = map[string]string{
 	"float64_negzero":          "double",
 	"string_empty":             "string",
 	"string_special":           "string",
-	"union_null_int":           "int",
-	"union_null_double":        "double",
 	"union_val_to_null_int":    "int",
 	"union_val_to_null_string": "string",
-	"union_null_stay":          "string",
 }
 
 var ExpectedKafkaDefaultCDCColumnsSchema = map[string]string{

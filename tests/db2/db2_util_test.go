@@ -52,7 +52,7 @@ var seedColumns = []seedColumn{
 	{name: "col_int_edge", datatype: "INTEGER", value: "-2147483648", filtered: "", updated: "2147483647"},
 	{name: "col_bigint_edge", datatype: "BIGINT", value: "-9223372036854775807 - 1", filtered: "", updated: "9223372036854775807"},
 	{name: "col_dec31_0", datatype: "DECIMAL(31, 0)", value: "9999999999999999999999999999999", filtered: "", updated: "-9999999999999999999999999999999"},
-	{name: "col_dec31_31", datatype: "DECIMAL(31, 31)", value: "0.9999999999999999999999999999999", filtered: "", updated: "-0.9999999999999999999999999999999"},
+	{name: "col_dec31_31", datatype: "DECIMAL(31, 31)", value: "CAST('0.9999999999999999999999999999999' AS DECIMAL(31, 31))", filtered: "", updated: "CAST('-0.9999999999999999999999999999999' AS DECIMAL(31, 31))"},
 	{name: "col_decfloat16", datatype: "DECFLOAT(16)", value: "1234567890123456", filtered: "", updated: "-1234567890123456"},
 	{name: "col_double_max", datatype: "DOUBLE", value: "1.7976931348623157E308", filtered: "", updated: "-1.7976931348623157E308"},
 	{name: "col_double_tiny", datatype: "DOUBLE", value: "2.2250738585072014E-308", filtered: "", updated: "-2.2250738585072014E-308"},
