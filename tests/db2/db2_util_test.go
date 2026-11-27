@@ -62,7 +62,7 @@ var seedColumns = []seedColumn{
 	{name: "col_time_edge", datatype: "TIME", value: `TIME('00.00.00')`, filtered: "", updated: `TIME('23.59.59')`},
 	{name: "col_varchar_special", datatype: "VARCHAR(200)", value: `'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉'`, filtered: "", updated: `''`},
 	{name: "col_varchar_empty", datatype: "VARCHAR(50)", value: `''`, filtered: "", updated: "NULL"},
-	{name: "col_clob_long", datatype: "CLOB(1M)", value: `CLOB(REPEAT('x', 100000))`, filtered: "", updated: `CLOB('short')`},
+	{name: "col_clob_long", datatype: "CLOB(1M)", value: `CLOB(REPEAT('x', 30000)) || CLOB(REPEAT('x', 30000)) || CLOB(REPEAT('x', 30000)) || CLOB(REPEAT('x', 10000))`, filtered: "", updated: `CLOB('short')`},
 	{name: "col_null_to_val", datatype: "INTEGER", value: "", filtered: "", updated: "5"},
 	{name: "col_val_to_null", datatype: "INTEGER", value: "5", filtered: "", updated: "NULL"},
 	{name: "col_null_stay", datatype: "INTEGER", value: "", filtered: "", updated: "NULL"},
