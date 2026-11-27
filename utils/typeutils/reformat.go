@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/datazip-inc/olake/constants"
@@ -22,6 +23,8 @@ import (
 
 var (
 	ErrNullValue = fmt.Errorf("null value")
+	// nanAsNull warns once a sync, not once a row, that a NaN decimal is written as null.
+	nanAsNull sync.Once
 )
 
 var DateTimeFormats = []string{
@@ -88,6 +91,13 @@ func ReformatValue(dataType types.DataType, v any) (any, error) {
 		return []any{v}, nil
 	case types.Binary:
 		return ReformatBytes(v)
+	case types.BigDecimal:
+		value, err := ReformatDecimal(dataType, v)
+		if err == errNaN {
+			nanAsNull.Do(func() { logger.Warn("writing NaN as null in decimal columns, which cannot hold it") })
+			return nil, ErrNullValue
+		}
+		return value, err
 	default:
 		return v, nil
 	}
@@ -96,11 +106,13 @@ func ReformatValue(dataType types.DataType, v any) (any, error) {
 // ParseFilterValue parses v into dataType strictly and returns the typed value.
 // For timestamp types, an unparseable string always returns an error
 // ReformatValue which silently falls back to epoch when isTimestampInDB=true).
-// A binary value is hex from state version 8, as JSON cannot carry bytes.
+// A binary value is hex from state version 8, as JSON cannot carry bytes; a decimal keeps its scale.
 func ParseFilterValue(dataType types.DataType, v any) (any, error) {
-	switch dataType {
+	switch dataType.ValueType() {
 	case types.Timestamp, types.TimestampMilli, types.TimestampMicro, types.TimestampNano:
 		return ReformatDate(v, false)
+	case types.BigDecimal:
+		return ReformatValue(types.BigDecimal, v)
 	default:
 		value, err := ReformatValue(dataType, v)
 		hexValue, isString := v.(string)
@@ -484,6 +496,8 @@ func ReformatFloat64(v interface{}) (float64, error) {
 			return float64(0), fmt.Errorf("failed to change string %v to float64: %v", v, err)
 		}
 		return f, nil
+	case Decimal:
+		return v.Float64(), nil
 	}
 
 	return float64(0), fmt.Errorf("failed to change %v (type:%T) to float64", v, v)
