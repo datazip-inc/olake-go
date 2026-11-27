@@ -425,12 +425,25 @@ func getDestDBPrefix(streams []*ConfiguredStream) (constantValue bool, prefix st
 	return len(prefixOrConstValue) == 1, prefixOrConstValue[0]
 }
 
+// evolvesPartitionInPlace reports whether a partition_regex change to the stream evolves its table's partition spec in
+// place rather than needing the table rebuilt: only on Iceberg, and only when every delete the stream writes addresses a
+// row by its file, so it follows the row into a file of the old spec. An unknown destination is treated as needing a rebuild.
+func evolvesPartitionInPlace(destinationType DestinationType, stream *ConfiguredStream) bool {
+	if destinationType != Iceberg {
+		return false
+	}
+	return stream.AppendModeEnabled() || stream.GetUpdateType().NeedsTableIndex(destinationType)
+}
+
 // GetStreamsDelta compares two catalogs and returns a new catalog with streams that have differences.
 // Only selected streams are compared.
 // 1. Compares properties from selected_streams: normalization, partition_regex, filter, append_mode, use_source_column_names, dedup_keys, update_type (dv -> other, pos -> dv)
 // 2. Compares properties from streams: destination_database, destination_table, cursor_field, sync_mode
 // 3. For now, any new stream present in new catalog is added to the difference. Later collision detection will happen.
 // 4. Skips append_mode, dedup_keys and update_type for destinations that cannot upsert (parquet): they never change what is written there.
+// 5. Skips partition_regex for an Iceberg stream that appends or writes pos/dv deletes: the table's partition spec is evolved
+// in place on the next sync. Equality deletes cannot reach rows in files of the old spec, so an eq upsert stream still needs
+// the table rebuilt.
 //
 // Parameters:
 //   - oldStreams: The previous catalog to compare against
@@ -522,6 +535,9 @@ func GetStreamsDelta(oldStreams, newStreams *Catalog, destinationType Destinatio
 				// check cursor field if SyncMode is incremental
 				cursorDelta := newSyncMode == INCREMENTAL && oldCursorField != newCursorField
 
+				partitionDelta := oldMetadata.PartitionRegex != newMetadata.PartitionRegex &&
+					!evolvesPartitionInPlace(destinationType, newConfigured)
+
 				// append_mode, dedup_keys and update_type only shape upsert writes
 				upsertDelta := upsertSupported &&
 					((oldConfigured.AppendModeEnabled() != newConfigured.AppendModeEnabled()) ||
@@ -529,7 +545,7 @@ func GetStreamsDelta(oldStreams, newStreams *Catalog, destinationType Destinatio
 						dvDelta)
 
 				return (oldConfigured.NormalizationEnabled() != newConfigured.NormalizationEnabled()) ||
-					(oldMetadata.PartitionRegex != newMetadata.PartitionRegex) ||
+					partitionDelta ||
 					(oldMetadata.Filter != newMetadata.Filter) ||
 					(oldMetadata.UseSourceColumnNames != newMetadata.UseSourceColumnNames) ||
 					!reflect.DeepEqual(oldMetadata.FilterConfig, newMetadata.FilterConfig) ||

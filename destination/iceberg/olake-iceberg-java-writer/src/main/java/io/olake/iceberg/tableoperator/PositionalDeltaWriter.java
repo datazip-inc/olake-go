@@ -47,6 +47,7 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
   private final PartitionSpec spec;
   private final boolean keepDeletes;
   private final PositionalDeleteSink deleteSink;
+  private final DataFilePartitions dataFilePartitions;
 
   private final PartitionKey partitionKeyTemplate;
   private final InternalRecordWrapper wrapper;
@@ -88,11 +89,13 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
                         Schema schema,
                         boolean keepDeletes,
                         PositionalDeleteSink deleteSink,
+                        DataFilePartitions dataFilePartitions,
                         String identifierField) {
     super(spec, format, appenderFactory, fileFactory, io, targetFileSize);
     this.spec = spec;
     this.keepDeletes = keepDeletes;
     this.deleteSink = deleteSink;
+    this.dataFilePartitions = dataFilePartitions;
     this.partitionKeyTemplate = new PartitionKey(spec, schema);
     this.wrapper = new InternalRecordWrapper(schema.asStruct());
 
@@ -120,10 +123,8 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
     StructLike partition = partitionOrNull(key);
 
     if (wrapped.hasPositionalDelete()) {
-      // TODO: routed to the NEW record's partition - the caller's index carries no
-      // partition for the old row. Wrong when an update moves a row between partitions;
-      // see the TODO on ArrowDeletionVectorWriter.add.
-      deleteSink.delete(wrapped.deleteFilePath(), wrapped.deletePosition(), spec, partition);
+      DataFilePartitions.Located superseded = referencedFile(wrapped.deleteFilePath(), partition);
+      deleteSink.delete(wrapped.deleteFilePath(), wrapped.deletePosition(), superseded.spec(), superseded.partition());
     }
 
     Object identifier = identifierOf(row);
@@ -140,6 +141,7 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
     lastDataWriter = dataWriter;
 
     if (identifier == null) {
+      recordLanding(dataWriter.currentPath().toString(), key);
       dataWriter.write(row);
       return;
     }
@@ -148,6 +150,7 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
     // until the batch completes), so it needs a stable copy, not the mutable template.
     PathOffset landing = new PathOffset(
         copiedPartitionOrNull(key), dataWriter.currentPath().toString(), dataWriter.currentRows());
+    recordLanding(landing.path, key);
     dataWriter.write(row);
 
     PathOffset previous = insertedRows.put(identifier, landing);
@@ -208,6 +211,27 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
       }
     }
     return closed;
+  }
+
+  /**
+   * Spec and partition to stamp on the delete of a row in the data file at path: the ones
+   * that file lives in, not the ones being written. The partition differs when an update
+   * moves a row between partitions, the spec for any row still in a file written before
+   * the table's partition spec was evolved; either way a delete stamped with the row being
+   * written never reaches the old row.
+   */
+  private DataFilePartitions.Located referencedFile(String path, StructLike writing) {
+    DataFilePartitions.Located located = dataFilePartitions.locate(path);
+    // a path the table does not hold matches no data file, whatever partition it carries
+    return located != null ? located : new DataFilePartitions.Located(spec, writing);
+  }
+
+  /**
+   * Remembers which partition the file a row is about to land in belongs to. A later batch
+   * of this session can supersede the row before any manifest lists the file.
+   */
+  private void recordLanding(String path, PartitionKey key) {
+    dataFilePartitions.recordWritten(path, spec, partitionOrNull(key));
   }
 
   private void supersedePrevious(Object identifier) throws IOException {

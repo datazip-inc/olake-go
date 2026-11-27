@@ -30,7 +30,7 @@ const (
 	fileTypePositionalDelete = "positionalDelete"
 	targetDataFileSize       = int64(512 * 1024 * 1024) // 512 MB
 	targetDeleteFileSize     = int64(64 * 1024 * 1024)  // 64 MB
-	// deletionVectorBatchSize is how many positions accumulate before being sent to the server for encoding as deletion vectors.
+	// deletionVectorBatchSize is how many positions accumulate before being sent to the server for encoding as deletes.
 	deletionVectorBatchSize = 100_000
 )
 

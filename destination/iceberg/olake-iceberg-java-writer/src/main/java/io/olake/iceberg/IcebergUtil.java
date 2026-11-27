@@ -105,6 +105,7 @@ public class IcebergUtil {
       return icebergCatalog.buildTable(tableIdentifier, schema)
               .withProperty(FORMAT_VERSION, String.valueOf(formatVersion))
               .withProperty(DEFAULT_FILE_FORMAT, writeFormat.toLowerCase(Locale.ENGLISH))
+              .withProperty(PartitionEvolution.APPLIED_PROPERTY, "")
               .withSortOrder(IcebergUtil.getIdentifierFieldsAsSortOrder(schema))
               .create();
     } else {
@@ -165,6 +166,8 @@ public class IcebergUtil {
       return icebergCatalog.buildTable(tableIdentifier, schema)
               .withProperty(FORMAT_VERSION, String.valueOf(formatVersion))
               .withProperty(DEFAULT_FILE_FORMAT, writeFormat.toLowerCase(Locale.ENGLISH))
+              .withProperty(PartitionEvolution.APPLIED_PROPERTY,
+                  PartitionEvolution.applied(PartitionEvolution.requested(partitionTransforms)))
               .withPartitionSpec(specBuilder.build())
               .withSortOrder(IcebergUtil.getIdentifierFieldsAsSortOrder(schema))
               .create();
@@ -196,11 +199,19 @@ public class IcebergUtil {
   }
 
   public static GenericAppenderFactory getTableAppender(Table icebergTable) {
+    return getTableAppender(icebergTable, icebergTable.spec());
+  }
+
+  /**
+   * An appender whose files are stamped with {@code spec}: a delete into a data file written
+   * under an older partition spec has to carry that file's spec, not the table's current one.
+   */
+  public static GenericAppenderFactory getTableAppender(Table icebergTable, PartitionSpec spec) {
     final Set<Integer> identifierFieldIds = icebergTable.schema().identifierFieldIds();
     if (identifierFieldIds == null || identifierFieldIds.isEmpty()) {
       return new GenericAppenderFactory(
           icebergTable.schema(),
-          icebergTable.spec(),
+          spec,
           null,
           null,
           null)
@@ -209,7 +220,7 @@ public class IcebergUtil {
     } else {
       return new GenericAppenderFactory(
           icebergTable.schema(),
-          icebergTable.spec(),
+          spec,
           Ints.toArray(identifierFieldIds),
           TypeUtil.select(icebergTable.schema(), Sets.newHashSet(identifierFieldIds)),
           null)

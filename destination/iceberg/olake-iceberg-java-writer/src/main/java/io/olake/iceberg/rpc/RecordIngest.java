@@ -11082,10 +11082,11 @@ public final class RecordIngest {
       FILEPATH(3),
       /**
        * <pre>
-       * Rows superseded by this sync, to be encoded as deletion vectors. Only sent
-       * under delete_mode DELETION_VECTOR, where the caller writes no delete file of
-       * its own: format version 3 rejects Parquet positional deletes, and the
-       * positions are already structured data on the caller's side. Sent incrementally
+       * Rows superseded by this sync, which the server encodes as deletion vectors
+       * (delete_mode DELETION_VECTOR) or Parquet positional delete files
+       * (POSITION). The caller writes no delete file of its own in either mode: only
+       * the server knows the partition spec and partition of a data file an earlier
+       * sync committed, which every delete has to be stamped with. Sent incrementally
        * during the sync so neither side buffers the whole set.
        * </pre>
        *
@@ -11113,10 +11114,11 @@ public final class RecordIngest {
       public static final int FILEPATH_VALUE = 3;
       /**
        * <pre>
-       * Rows superseded by this sync, to be encoded as deletion vectors. Only sent
-       * under delete_mode DELETION_VECTOR, where the caller writes no delete file of
-       * its own: format version 3 rejects Parquet positional deletes, and the
-       * positions are already structured data on the caller's side. Sent incrementally
+       * Rows superseded by this sync, which the server encodes as deletion vectors
+       * (delete_mode DELETION_VECTOR) or Parquet positional delete files
+       * (POSITION). The caller writes no delete file of its own in either mode: only
+       * the server knows the partition spec and partition of a data file an earlier
+       * sync committed, which every delete has to be stamped with. Sent incrementally
        * during the sync so neither side buffers the whole set.
        * </pre>
        *
@@ -14619,10 +14621,10 @@ public final class RecordIngest {
 
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14631,10 +14633,10 @@ public final class RecordIngest {
             getPartitionValuesList();
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14642,10 +14644,10 @@ public final class RecordIngest {
         io.olake.iceberg.rpc.RecordIngest.ArrowPayload.FileMetadata.PartitionValue getPartitionValues(int index);
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14653,10 +14655,10 @@ public final class RecordIngest {
         int getPartitionValuesCount();
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14665,10 +14667,10 @@ public final class RecordIngest {
             getPartitionValuesOrBuilderList();
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14788,10 +14790,10 @@ public final class RecordIngest {
         private java.util.List<io.olake.iceberg.rpc.RecordIngest.ArrowPayload.FileMetadata.PartitionValue> partitionValues_;
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14802,10 +14804,10 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14817,10 +14819,10 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14831,10 +14833,10 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -14845,10 +14847,10 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * Partition the vector is stamped with: the one being WRITTEN when these rows
-         * were superseded, not necessarily the one the referenced data file lives in.
-         * Matches how the rows path routes the same delete - see the TODO on
-         * ArrowDeletionVectorWriter.
+         * Partition of the referenced data file when the caller wrote it this sync,
+         * otherwise the one being written. The server stamps the vector with the
+         * partition the table's manifests list for a committed file, and only falls
+         * back to these values for a file no manifest lists yet.
          * </pre>
          *
          * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15487,10 +15489,10 @@ public final class RecordIngest {
 
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15504,10 +15506,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15521,10 +15523,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15538,10 +15540,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15562,10 +15564,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15583,10 +15585,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15606,10 +15608,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15630,10 +15632,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15651,10 +15653,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15672,10 +15674,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15694,10 +15696,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15714,10 +15716,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15734,10 +15736,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15748,10 +15750,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15765,10 +15767,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15783,10 +15785,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15797,10 +15799,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -15812,10 +15814,10 @@ public final class RecordIngest {
           }
           /**
            * <pre>
-           * Partition the vector is stamped with: the one being WRITTEN when these rows
-           * were superseded, not necessarily the one the referenced data file lives in.
-           * Matches how the rows path routes the same delete - see the TODO on
-           * ArrowDeletionVectorWriter.
+           * Partition of the referenced data file when the caller wrote it this sync,
+           * otherwise the one being written. The server stamps the vector with the
+           * partition the table's manifests list for a committed file, and only falls
+           * back to these values for a file no manifest lists yet.
            * </pre>
            *
            * <code>repeated .io.olake.iceberg.rpc.ArrowPayload.FileMetadata.PartitionValue partition_values = 3;</code>
@@ -16729,7 +16731,7 @@ public final class RecordIngest {
 
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -16738,7 +16740,7 @@ public final class RecordIngest {
       boolean hasDeletionVectors();
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -16747,7 +16749,7 @@ public final class RecordIngest {
       io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch getDeletionVectors();
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -17011,7 +17013,7 @@ public final class RecordIngest {
       private io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch deletionVectors_;
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -17023,7 +17025,7 @@ public final class RecordIngest {
       }
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -17035,7 +17037,7 @@ public final class RecordIngest {
       }
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18247,7 +18249,7 @@ public final class RecordIngest {
             io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch, io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch.Builder, io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatchOrBuilder> deletionVectorsBuilder_;
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18258,7 +18260,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18273,7 +18275,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18293,7 +18295,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18311,7 +18313,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18336,7 +18338,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18353,7 +18355,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18365,7 +18367,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18380,7 +18382,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>

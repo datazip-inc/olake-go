@@ -178,6 +178,13 @@ func TestPostgresIcebergPosIncremental(t *testing.T) {
 	cfg.TestIcebergPosIncremental(t)
 }
 
+func TestPostgresIcebergPartitionChanges(t *testing.T) {
+	t.Parallel()
+	cfg := postgresBaseConfig(t)
+	createReplicationSlot(t, cfg.TestConfig)
+	cfg.TestIcebergPartitionChanges(t)
+}
+
 func TestPostgresPerformance(t *testing.T) {
 	cfg, err := testutils.NewTestConfig(t, constants.Postgres, "public", ExecuteQuery)
 	require.NoError(t, err, "failed to build the test config")

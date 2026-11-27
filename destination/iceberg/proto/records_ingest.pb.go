@@ -142,10 +142,11 @@ const (
 	ArrowPayload_REGISTER_AND_COMMIT ArrowPayload_PayloadType = 1
 	ArrowPayload_JSONSCHEMA          ArrowPayload_PayloadType = 2
 	ArrowPayload_FILEPATH            ArrowPayload_PayloadType = 3
-	// Rows superseded by this sync, to be encoded as deletion vectors. Only sent
-	// under delete_mode DELETION_VECTOR, where the caller writes no delete file of
-	// its own: format version 3 rejects Parquet positional deletes, and the
-	// positions are already structured data on the caller's side. Sent incrementally
+	// Rows superseded by this sync, which the server encodes as deletion vectors
+	// (delete_mode DELETION_VECTOR) or Parquet positional delete files
+	// (POSITION). The caller writes no delete file of its own in either mode: only
+	// the server knows the partition spec and partition of a data file an earlier
+	// sync committed, which every delete has to be stamped with. Sent incrementally
 	// during the sync so neither side buffers the whole set.
 	ArrowPayload_DELETION_VECTORS ArrowPayload_PayloadType = 4
 )
@@ -1576,7 +1577,7 @@ type ArrowPayload_Metadata struct {
 	// REGISTER_AND_COMMIT: snapshot the caller's table index is checkpointed at.
 	// The server refuses the commit when the table tip has moved past it.
 	BaseSnapshotId *int64 `protobuf:"varint,7,opt,name=base_snapshot_id,json=baseSnapshotId,proto3,oneof" json:"base_snapshot_id,omitempty"`
-	// DELETION_VECTORS only.
+	// DELETION_VECTORS only: positions for pos or dv mode.
 	DeletionVectors *ArrowPayload_DeletionVectorBatch `protobuf:"bytes,8,opt,name=deletion_vectors,json=deletionVectors,proto3,oneof" json:"deletion_vectors,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -1852,10 +1853,10 @@ type ArrowPayload_DeletionVectorBatch_Entry struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DataFilePath string                 `protobuf:"bytes,1,opt,name=data_file_path,json=dataFilePath,proto3" json:"data_file_path,omitempty"`
 	Positions    []int64                `protobuf:"varint,2,rep,packed,name=positions,proto3" json:"positions,omitempty"`
-	// Partition the vector is stamped with: the one being WRITTEN when these rows
-	// were superseded, not necessarily the one the referenced data file lives in.
-	// Matches how the rows path routes the same delete - see the TODO on
-	// ArrowDeletionVectorWriter.
+	// Partition of the referenced data file when the caller wrote it this sync,
+	// otherwise the one being written. The server stamps the vector with the
+	// partition the table's manifests list for a committed file, and only falls
+	// back to these values for a file no manifest lists yet.
 	PartitionValues []*ArrowPayload_FileMetadata_PartitionValue `protobuf:"bytes,3,rep,name=partition_values,json=partitionValues,proto3" json:"partition_values,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache

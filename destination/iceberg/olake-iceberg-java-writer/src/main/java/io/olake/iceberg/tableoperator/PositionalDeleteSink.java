@@ -9,6 +9,7 @@ import java.util.function.Function;
 
 import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.StructLike;
@@ -24,6 +25,7 @@ import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.OutputFileFactory;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.util.CharSequenceSet;
+import org.apache.iceberg.util.StructLikeMap;
 
 import com.google.common.collect.Maps;
 
@@ -40,7 +42,11 @@ import com.google.common.collect.Maps;
  */
 interface PositionalDeleteSink extends Closeable {
 
-  /** Marks one row superseded. Partition is null on an unpartitioned spec. */
+  /**
+   * Marks one row superseded. {@code spec} and {@code partition} are those of the data file
+   * holding the row, which may be an older spec than the table's current one. Partition is
+   * null on an unpartitioned spec.
+   */
   void delete(String path, long position, PartitionSpec spec, StructLike partition) throws IOException;
 
   /** Delete files produced, plus the data files they reference and any files they replace. */
@@ -57,13 +63,6 @@ interface PositionalDeleteSink extends Closeable {
   /** Stand-in for a sink that never wrote anything. */
   DeleteWriteResult EMPTY = new DeleteWriteResult(List.of(), CharSequenceSet.empty(), List.of());
 
-  /** Map key for a partition, since an unpartitioned spec routes on a null partition. */
-  Object UNPARTITIONED = new Object();
-
-  static Object partitionKey(StructLike partition) {
-    return partition == null ? UNPARTITIONED : partition;
-  }
-
   /**
    * Writes positional delete files, one per referenced data file.
    *
@@ -74,19 +73,26 @@ interface PositionalDeleteSink extends Closeable {
    */
   final class PositionalFiles implements PositionalDeleteSink {
     private final FileFormat format;
-    private final FileAppenderFactory<Record> appenderFactory;
+    // A delete file is stamped with the spec of the appender that writes it, so a delete
+    // into a file of an older partition spec needs an appender built for that spec.
+    private final Function<PartitionSpec, FileAppenderFactory<Record>> appenderForSpec;
     private final OutputFileFactory fileFactory;
     private final DeleteGranularity granularity;
-    private final Map<Object, SortingPositionOnlyDeleteWriter<Record>> writers = Maps.newHashMap();
+    private final Map<Integer, FileAppenderFactory<Record>> appenders = Maps.newHashMap();
+    // Per spec, keyed by partition VALUE: a delete may be routed on the writer's mutable
+    // partition template, a copy of it, or a partition read from a manifest, and all three
+    // must reach the same writer.
+    private final Map<Integer, StructLikeMap<SortingPositionOnlyDeleteWriter<Record>>> partitionedWriters = Maps.newHashMap();
+    private final Map<Integer, SortingPositionOnlyDeleteWriter<Record>> unpartitionedWriters = Maps.newHashMap();
     private final PositionDelete<Record> positionDelete = PositionDelete.create();
     private DeleteWriteResult aggregated;
 
     PositionalFiles(FileFormat format,
-                    FileAppenderFactory<Record> appenderFactory,
+                    Function<PartitionSpec, FileAppenderFactory<Record>> appenderForSpec,
                     OutputFileFactory fileFactory,
                     DeleteGranularity granularity) {
       this.format = format;
-      this.appenderFactory = appenderFactory;
+      this.appenderForSpec = appenderForSpec;
       this.fileFactory = fileFactory;
       this.granularity = granularity;
     }
@@ -97,26 +103,57 @@ interface PositionalDeleteSink extends Closeable {
     }
 
     private SortingPositionOnlyDeleteWriter<Record> writerFor(PartitionSpec spec, StructLike partition) {
-      return writers.computeIfAbsent(
-          partitionKey(partition),
-          ignored -> {
-            // The caller may pass a mutable, reused partition-key template. Copy before
-            // capturing it in the writer-creation closure below, which fires lazily on
-            // the writer's first flush - by then the template may already describe a
-            // different row's partition.
-            StructLike stable = partition instanceof PartitionKey ? ((PartitionKey) partition).copy() : partition;
-            return new SortingPositionOnlyDeleteWriter<>(
-                () -> appenderFactory.newPosDeleteWriter(
-                    stable == null ? fileFactory.newOutputFile() : fileFactory.newOutputFile(spec, stable),
-                    format, stable),
-                granularity);
-          });
+      if (partition == null) {
+        return unpartitionedWriters.computeIfAbsent(spec.specId(), id -> newWriter(spec, null));
+      }
+
+      StructLikeMap<SortingPositionOnlyDeleteWriter<Record>> writers =
+          partitionedWriters.computeIfAbsent(spec.specId(), id -> StructLikeMap.create(spec.partitionType()));
+      SortingPositionOnlyDeleteWriter<Record> writer = writers.get(partition);
+      if (writer == null) {
+        // The caller may pass a mutable, reused partition-key template. Copy before it
+        // becomes a map key or is captured by the writer-creation closure, which fires
+        // lazily on the writer's first flush - by then the template may already describe
+        // a different row's partition.
+        StructLike stable = stableCopy(partition);
+        writer = newWriter(spec, stable);
+        writers.put(stable, writer);
+      }
+      return writer;
+    }
+
+    private SortingPositionOnlyDeleteWriter<Record> newWriter(PartitionSpec spec, StructLike partition) {
+      FileAppenderFactory<Record> appenderFactory = appenders.computeIfAbsent(spec.specId(), id -> appenderForSpec.apply(spec));
+      return new SortingPositionOnlyDeleteWriter<>(
+          () -> appenderFactory.newPosDeleteWriter(
+              partition == null ? fileFactory.newOutputFile() : fileFactory.newOutputFile(spec, partition),
+              format, partition),
+          granularity);
+    }
+
+    private static StructLike stableCopy(StructLike partition) {
+      if (partition instanceof PartitionKey key) {
+        return key.copy();
+      }
+      if (partition instanceof PartitionData data) {
+        return data.copy();
+      }
+      return partition;
+    }
+
+    private List<SortingPositionOnlyDeleteWriter<Record>> writers() {
+      List<SortingPositionOnlyDeleteWriter<Record>> all = new ArrayList<>(unpartitionedWriters.values());
+      for (StructLikeMap<SortingPositionOnlyDeleteWriter<Record>> writers : partitionedWriters.values()) {
+        all.addAll(writers.values());
+      }
+      return all;
     }
 
     @Override
     public void close() throws IOException {
       IOException failure = null;
-      for (SortingPositionOnlyDeleteWriter<Record> writer : writers.values()) {
+      List<SortingPositionOnlyDeleteWriter<Record>> writers = writers();
+      for (SortingPositionOnlyDeleteWriter<Record> writer : writers) {
         try {
           writer.close();
         } catch (IOException e) {
@@ -133,7 +170,7 @@ interface PositionalDeleteSink extends Closeable {
 
       List<DeleteFile> files = new ArrayList<>();
       CharSequenceSet referenced = CharSequenceSet.empty();
-      for (SortingPositionOnlyDeleteWriter<Record> writer : writers.values()) {
+      for (SortingPositionOnlyDeleteWriter<Record> writer : writers) {
         DeleteWriteResult result = writer.result();
         files.addAll(result.deleteFiles());
         referenced.addAll(result.referencedDataFiles());

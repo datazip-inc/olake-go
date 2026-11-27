@@ -272,6 +272,16 @@ The Iceberg writer supports the following transforms:
 
 For more details on partition transforms, see the [Iceberg Partition Transform Specification](https://iceberg.apache.org/spec/#partition-transforms).
 
+### Changing the Partitioning (Partition Evolution)
+
+Changing `partition_regex` of an existing stream evolves the table's partition spec in place on the next sync, without dropping the table or resyncing it:
+
+- Data files written before the change keep the spec they were written under, and new files use the new spec. Iceberg plans each file against its own spec, so queries see one table.
+- Updates and deletes of rows still in old-spec files are written under that file's own spec and partition. Iceberg only applies a delete to files of the same spec and partition. This also covers an update that moves a row to another partition.
+- The partition fields OLake applied are recorded in the table property `olake.partition-fields`. A spec changed by another engine (e.g. Spark `ALTER TABLE ... ADD PARTITION FIELD`) is kept until the stream's own `partition_regex` changes. The arrow writer computes partitions from `partition_regex`, so with `arrow_writes` the regex has to name every partition field of the table.
+
+Partition evolution applies to streams in append mode or with `update_type` `pos` or `dv`. A stream writing equality deletes (`update_type: eq`) keeps its spec, and changing its `partition_regex` still needs the table cleared and resynced. An equality delete written under a new spec never reaches a row in a file of the old one.
+
 ### Handling Missing Partition Fields
 
 When a partition field is missing from a record, the writer will automatically set the field to `nil`, which Iceberg treats as a null value. This ensures that records with missing partition fields can still be processed correctly.

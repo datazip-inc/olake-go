@@ -138,9 +138,12 @@ public final class EqualityDeleteMigrator {
             path -> readKeys(table, delete, projection, identifierField)));
       }
 
+      // a data file written before the partition spec was evolved keeps its own spec, and
+      // its delete has to carry that spec too
+      PartitionSpec fileSpec = table.specs().get(entry.dataFile.specId());
       PartitionGroup group = groups.computeIfAbsent(
-          table.spec().partitionToPath(entry.dataFile.partition()),
-          path -> new PartitionGroup(entry.dataFile.partition()));
+          fileSpec.specId() + "/" + fileSpec.partitionToPath(entry.dataFile.partition()),
+          path -> new PartitionGroup(fileSpec, entry.dataFile.partition()));
       posConvCount += collectPositions(table, entry.dataFile, projection, identifierField, deletedKeys, group);
     }
 
@@ -223,8 +226,6 @@ public final class EqualityDeleteMigrator {
   private static WrittenDeletes writeDeletionVectors(Table table, OutputFileFactory fileFactory,
       Map<String, PartitionGroup> groups, Map<String, List<DeleteFile>> previousDeletes) throws IOException {
 
-    PartitionSpec spec = table.spec();
-
     // ONE writer for the WHOLE migration, not one per partition (contrast with
     // writePositionDeletes below): the spec allows many vectors inside one Puffin
     // file with no restriction on which data files they reference, and one writer
@@ -236,9 +237,9 @@ public final class EqualityDeleteMigrator {
           LOGGER.info("No positions to write for partition {}", group.partition);
           continue;
         }
-        StructLike partition = spec.isUnpartitioned() ? null : group.partition;
+        StructLike partition = group.spec.isUnpartitioned() ? null : group.partition;
         for (RowPosition row : group.positions) {
-          writer.delete(row.path, row.position, spec, partition);
+          writer.delete(row.path, row.position, group.spec, partition);
         }
       }
     } finally {
@@ -326,9 +327,8 @@ public final class EqualityDeleteMigrator {
 
   private static List<DeleteFile> writePositionDeletes(Table table, OutputFileFactory fileFactory,
       Map<String, PartitionGroup> groups) throws IOException {
-    GenericAppenderFactory appenderFactory = IcebergUtil.getTableAppender(table);
     FileFormat format = IcebergUtil.getTableFileFormat(table);
-    PartitionSpec spec = table.spec();
+    Map<Integer, GenericAppenderFactory> appenders = new HashMap<>();
     List<DeleteFile> written = new ArrayList<>();
 
     for (PartitionGroup group : groups.values()) {
@@ -340,11 +340,14 @@ public final class EqualityDeleteMigrator {
       // Iceberg expects positional delete files sorted by path then position.
       group.positions.sort(Comparator.comparing((RowPosition row) -> row.path).thenComparingLong(row -> row.position));
 
+      PartitionSpec spec = group.spec;
       StructLike partition = spec.isUnpartitioned() ? null : group.partition;
       EncryptedOutputFile output = spec.isUnpartitioned()
           ? fileFactory.newOutputFile()
           : fileFactory.newOutputFile(spec, partition);
 
+      GenericAppenderFactory appenderFactory =
+          appenders.computeIfAbsent(spec.specId(), id -> IcebergUtil.getTableAppender(table, spec));
       PositionDeleteWriter<Record> writer = appenderFactory.newPosDeleteWriter(output, format, partition);
       PositionDelete<Record> positionDelete = PositionDelete.create();
       try {
@@ -372,10 +375,12 @@ public final class EqualityDeleteMigrator {
   }
 
   private static final class PartitionGroup {
+    private final PartitionSpec spec;
     private final StructLike partition;
     private final List<RowPosition> positions = new ArrayList<>();
 
-    private PartitionGroup(StructLike partition) {
+    private PartitionGroup(PartitionSpec spec, StructLike partition) {
+      this.spec = spec;
       this.partition = partition;
     }
   }

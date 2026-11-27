@@ -31,11 +31,14 @@ public class IcebergTableWriterFactory {
   public DeleteMode deleteMode = DeleteMode.EQUALITY;
   // Row-identity column, set even where the catalog refuses to declare it; null falls back to the table's.
   public String identifierField;
+  // Where the data files that positional deletes reference live; shared across a session's
+  // writers so the table's manifests are read once. Null builds one per writer.
+  public DataFilePartitions dataFilePartitions;
 
   // One positional delete file per referenced data file. Matches the granularity the
   // equality path has always used. PARTITION trades reader-side skipping for far fewer
   // delete files, which matters once deletes can reference arbitrary historical files.
-  private static final DeleteGranularity DELETE_GRANULARITY = DeleteGranularity.PARTITION;
+  static final DeleteGranularity DELETE_GRANULARITY = DeleteGranularity.PARTITION;
 
   public BaseTaskWriter<Record> create(Table icebergTable) {
 
@@ -89,7 +92,9 @@ public class IcebergTableWriterFactory {
       return new PositionalDeltaWriter(icebergTable.spec(), format, appenderFactory, fileFactory,
           icebergTable.io(),
           targetFileSize, icebergTable.schema(), keepDeletes,
-          deleteSink(icebergTable, format, appenderFactory, fileFactory), identifierField);
+          deleteSink(icebergTable, format, appenderFactory, fileFactory),
+          dataFilePartitions != null ? dataFilePartitions : new DataFilePartitions(icebergTable),
+          identifierField);
     }
 
     Set<Integer> identifierFieldIds = icebergTable.schema().identifierFieldIds();
@@ -118,7 +123,12 @@ public class IcebergTableWriterFactory {
       return new PositionalDeleteSink.DeletionVectors(
           dvFileFactory, new io.olake.iceberg.tableIndex.PreviousDeleteLoader(icebergTable));
     }
-    return new PositionalDeleteSink.PositionalFiles(format, appenderFactory, fileFactory, DELETE_GRANULARITY);
+    // the table's own appender for its current spec; one built per older spec a delete may reach into
+    return new PositionalDeleteSink.PositionalFiles(format,
+        spec -> spec.specId() == icebergTable.spec().specId()
+            ? appenderFactory
+            : IcebergUtil.getTableAppender(icebergTable, spec),
+        fileFactory, DELETE_GRANULARITY);
   }
 
 }

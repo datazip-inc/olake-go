@@ -400,3 +400,26 @@ func TestRecoverToError(t *testing.T) {
 		})
 	}
 }
+
+// The stream difference is computed for the destination the job writes to, which decides whether a partition_regex
+// change needs the table rebuilt.
+func TestDifferenceDestinationType(t *testing.T) {
+	testCases := []struct {
+		name   string
+		config *types.WriterConfig
+		flag   string
+		want   types.DestinationType
+	}{
+		{name: "the destination config wins", config: &types.WriterConfig{Type: types.Parquet}, flag: "iceberg", want: types.Parquet},
+		{name: "the flag names a destination directory", config: &types.WriterConfig{}, flag: "iceberg", want: types.Iceberg},
+		{name: "no config loaded", flag: "parquet", want: types.Parquet},
+		{name: "neither given", config: &types.WriterConfig{}, flag: "not-set", want: ""},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := differenceDestinationType(tc.config, tc.flag); got != tc.want {
+				t.Fatalf("differenceDestinationType() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/datazip-inc/olake/constants"
@@ -163,6 +164,19 @@ func resolveAvailableUpdateTypes(sourceSupported []types.UpdateType) ([]types.Up
 	return available, nil
 }
 
+// differenceDestinationType is the destination the stream difference is computed for: the --destination config's type,
+// or else --destination-type, which names a destination directory the way the spec command takes it (iceberg, parquet).
+// Empty when neither is given, which makes the difference report every property change.
+func differenceDestinationType(config *types.WriterConfig, flag string) types.DestinationType {
+	if config != nil && config.Type != "" {
+		return config.Type
+	}
+	if flag == "" || flag == "not-set" {
+		return ""
+	}
+	return types.DestinationType(strings.ToUpper(flag))
+}
+
 // compareStreams reads the old and new catalogs, computes the difference, and writes the result to
 // difference_streams.json, or to difference_available_streams.json and difference_selected_streams.json
 // for the v2 format.
@@ -177,7 +191,7 @@ func compareStreams() error {
 		return fmt.Errorf("failed to read new catalog: %w", err)
 	}
 
-	diffCatalog := types.GetStreamsDelta(oldStreams, newStreams, destinationConfig.Type)
+	diffCatalog := types.GetStreamsDelta(oldStreams, newStreams, differenceDestinationType(destinationConfig, destinationType))
 	if len(diffCatalog.Streams) == 0 && len(diffCatalog.SelectedStreams) == 0 {
 		logger.Infof("No differences found between the old and new catalogs")
 	}
