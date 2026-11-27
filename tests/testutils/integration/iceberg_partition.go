@@ -49,14 +49,14 @@ func (th *TestHandler) TestIcebergPartitionChanges(t *testing.T) {
 			})
 		}
 	}
-	// the arrow writer computes partitions from partition_regex, so only the legacy writer follows a spec another engine set
-	for _, updateType := range []string{"pos", "dv"} {
-		t.Run("Legacy/"+updateType+"/external", func(t *testing.T) {
-			require.NoError(t, th.IcebergWriter(ctx, t, testTable, false, func(ctx context.Context, t *testing.T, table string) error {
-				return th.testIcebergExternalPartitionEvolution(ctx, t, table, updateType)
-			}))
-		})
-	}
+	// The arrow writer computes partitions from partition_regex, so only the legacy writer follows a spec another engine
+	// set. pos only: the Spark of the test stack runs Iceberg 1.8, whose v3 metadata (dv tables) lacks next-row-id, which
+	// the writer's Iceberg 1.10 refuses to read.
+	t.Run("Legacy/pos/external", func(t *testing.T) {
+		require.NoError(t, th.IcebergWriter(ctx, t, testTable, false, func(ctx context.Context, t *testing.T, table string) error {
+			return th.testIcebergExternalPartitionEvolution(ctx, t, table, "pos")
+		}))
+	})
 	t.Run("Legacy/eq/keeps-spec", func(t *testing.T) {
 		require.NoError(t, th.IcebergWriter(ctx, t, testTable, false, th.testIcebergEqualityKeepsPartitionSpec))
 	})
@@ -82,6 +82,8 @@ func (th *TestHandler) preparePartitionSync(ctx context.Context, t *testing.T, t
 	if err := th.prepareTableIndexSync(ctx, t, testTable); err != nil {
 		return err
 	}
+	// every scenario syncs into the same table name, so a table an interrupted run left behind would be appended to
+	testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB)
 	if err := setUpdateType(th.TestConfig, th.Namespace, testTable, updateType); err != nil {
 		return fmt.Errorf("failed setting update type: %w", err)
 	}
@@ -95,19 +97,19 @@ func (th *TestHandler) preparePartitionSync(ctx context.Context, t *testing.T, t
 // own partition: stamped with the new one, a delete file spanning several data files misses it on every read, and a
 // file-scoped delete or deletion vector misses it under a filter on col_char.
 func (th *TestHandler) testIcebergPartitionMove(ctx context.Context, t *testing.T, testTable, updateType string) error {
-	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
-	defer testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB)
-
+	// DestinationDB is only known once preparePartitionSync rendered the catalog
+	defer func() { testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB) }()
 	if err := th.preparePartitionSync(ctx, t, testTable, updateType, movingPartitionRegex); err != nil {
 		return err
 	}
+	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
 	th.applyCDCUpdate(ctx, t)
 	if err := th.runIcebergSync(ctx, t, "cdc sync moving row 1", true); err != nil {
 		return err
 	}
 
 	spark := getSparkSession(ctx, t)
-	th.assertMovedRow(ctx, t, spark, fullTableName, seedRowCount)
+	th.assertMovedRow(ctx, t, spark, fullTableName, seedRowCount, seedRowCount-1)
 	require.Equal(t, []string{"c"}, sparkStrings(ctx, t, spark, fmt.Sprintf(
 		"SELECT DISTINCT cast(partition.col_char AS string) AS v FROM %s.delete_files", fullTableName)),
 		"the delete is stamped with the partition the row moved out of")
@@ -118,12 +120,12 @@ func (th *TestHandler) testIcebergPartitionMove(ctx context.Context, t *testing.
 // written after the change land under the new spec, and the update into a file of the old spec is deleted under that
 // spec.
 func (th *TestHandler) testIcebergPartitionEvolution(ctx context.Context, t *testing.T, testTable, updateType string) error {
-	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
-	defer testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB)
-
+	// DestinationDB is only known once preparePartitionSync rendered the catalog
+	defer func() { testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB) }()
 	if err := th.preparePartitionSync(ctx, t, testTable, updateType, movingPartitionRegex); err != nil {
 		return err
 	}
+	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
 	if err := setPartitionRegex(th.TestConfig, th.Namespace, testTable, evolvedPartitionRegex); err != nil {
 		return fmt.Errorf("failed changing partition_regex: %w", err)
 	}
@@ -141,19 +143,20 @@ func (th *TestHandler) testIcebergPartitionEvolution(ctx context.Context, t *tes
 	require.Equal(t, []string{"0"}, sparkStrings(ctx, t, spark, fmt.Sprintf(
 		"SELECT DISTINCT cast(spec_id AS string) AS v FROM %s.delete_files", fullTableName)),
 		"the update superseded a row in a file of the old spec")
-	th.assertMovedRow(ctx, t, spark, fullTableName, seedRowCount+1)
+	// the inserted row lands in col_char=c too
+	th.assertMovedRow(ctx, t, spark, fullTableName, seedRowCount+1, seedRowCount)
 	return nil
 }
 
 // testIcebergExternalPartitionEvolution evolves the spec from Spark between two syncs. OLake keeps writing under that
 // spec while its own partition_regex is unchanged, and deletes into files of the old spec carry the old spec.
 func (th *TestHandler) testIcebergExternalPartitionEvolution(ctx context.Context, t *testing.T, testTable, updateType string) error {
-	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
-	defer testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB)
-
+	// DestinationDB is only known once preparePartitionSync rendered the catalog
+	defer func() { testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB) }()
 	if err := th.preparePartitionSync(ctx, t, testTable, updateType, movingPartitionRegex); err != nil {
 		return err
 	}
+	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
 	spark := getSparkSession(ctx, t)
 	runSpark(ctx, t, spark, fmt.Sprintf("ALTER TABLE %s ADD PARTITION FIELD bucket(2, col_bigserial)", fullTableName))
 
@@ -167,19 +170,19 @@ func (th *TestHandler) testIcebergExternalPartitionEvolution(ctx context.Context
 		"the spec another engine evolved is kept")
 	require.Equal(t, []string{"0"}, sparkStrings(ctx, t, spark, fmt.Sprintf(
 		"SELECT DISTINCT cast(spec_id AS string) AS v FROM %s.delete_files", fullTableName)))
-	th.assertMovedRow(ctx, t, spark, fullTableName, seedRowCount)
+	th.assertMovedRow(ctx, t, spark, fullTableName, seedRowCount, seedRowCount-1)
 	return nil
 }
 
 // testIcebergEqualityKeepsPartitionSpec changes partition_regex of an eq stream: an equality delete written under a new
 // spec never reaches a row in a file of the old one, so the table keeps its spec until it is rebuilt.
 func (th *TestHandler) testIcebergEqualityKeepsPartitionSpec(ctx context.Context, t *testing.T, testTable string) error {
-	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
-	defer testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB)
-
+	// DestinationDB is only known once preparePartitionSync rendered the catalog
+	defer func() { testutils.DropIcebergTable(t, testTable, th.TestConfig.DestinationDB) }()
 	if err := th.preparePartitionSync(ctx, t, testTable, "eq", movingPartitionRegex); err != nil {
 		return err
 	}
+	fullTableName := fmt.Sprintf("%s.%s.%s", testutils.IcebergCatalog, th.TestConfig.DestinationDB, testTable)
 	if err := setPartitionRegex(th.TestConfig, th.Namespace, testTable, evolvedPartitionRegex); err != nil {
 		return fmt.Errorf("failed changing partition_regex: %w", err)
 	}
@@ -197,13 +200,16 @@ func (th *TestHandler) testIcebergEqualityKeepsPartitionSpec(ctx context.Context
 }
 
 // assertMovedRow checks row 1 was moved to col_char=d without leaving a copy in col_char=c, on a plain read and on reads
-// filtered by the partition column.
-func (th *TestHandler) assertMovedRow(ctx context.Context, t *testing.T, spark sql.SparkSession, fullTableName string, liveRows int64) {
+// filtered by the partition column. rowsInC is how many live rows col_char=c holds.
+func (th *TestHandler) assertMovedRow(ctx context.Context, t *testing.T, spark sql.SparkSession, fullTableName string, liveRows, rowsInC int64) {
 	t.Helper()
-	require.Equal(t, liveRows, countLiveRecords(ctx, t, spark, fullTableName), "live rows")
+	if live := countLiveRecords(ctx, t, spark, fullTableName); live != liveRows {
+		logTableLayout(ctx, t, spark, fullTableName)
+		require.Equal(t, liveRows, live, "live rows")
+	}
 	require.Equal(t, []string{"d"}, sparkStrings(ctx, t, spark, fmt.Sprintf(
 		"SELECT cast(col_char AS string) AS v FROM %s WHERE col_bigserial = 1", fullTableName)), "row 1 has one live copy, moved")
-	require.Equal(t, seedRowCount-1, countSpark(ctx, t, spark, fmt.Sprintf(
+	require.Equal(t, rowsInC, countSpark(ctx, t, spark, fmt.Sprintf(
 		"SELECT count(*) AS cnt FROM %s WHERE col_char = 'c'", fullTableName)), "no copy of row 1 is left in col_char=c")
 	require.Equal(t, int64(0), countSpark(ctx, t, spark, fmt.Sprintf(
 		"SELECT count(*) AS cnt FROM %s WHERE col_char = 'c' AND col_bigserial = 1", fullTableName)))
@@ -246,4 +252,30 @@ func runSpark(ctx context.Context, t *testing.T, spark sql.SparkSession, stateme
 	require.NoError(t, err, "spark sql failed: %s", statement)
 	_, err = df.Collect(ctx)
 	require.NoError(t, err, "spark sql failed: %s", statement)
+}
+
+// logTableLayout logs the live rows with the file each sits in, and every data and delete file with its spec and
+// partition, for a failed partition assertion.
+func logTableLayout(ctx context.Context, t *testing.T, spark sql.SparkSession, fullTableName string) {
+	t.Helper()
+	for _, query := range []string{
+		fmt.Sprintf("SELECT col_bigserial, cast(col_char AS string) AS col_char, _op_type, _file FROM %s ORDER BY col_bigserial", fullTableName),
+		fmt.Sprintf("SELECT content, spec_id, cast(partition AS string) AS partition, record_count, file_path FROM %s.data_files", fullTableName),
+		fmt.Sprintf("SELECT content, spec_id, cast(partition AS string) AS partition, record_count, file_path FROM %s.delete_files", fullTableName),
+	} {
+		df, err := spark.Sql(ctx, query)
+		if err != nil {
+			t.Logf("%s: %v", query, err)
+			continue
+		}
+		rows, err := df.Collect(ctx)
+		if err != nil {
+			t.Logf("%s: %v", query, err)
+			continue
+		}
+		t.Logf("%s:", query)
+		for _, row := range rows {
+			t.Logf("  %v", row.Values())
+		}
+	}
 }

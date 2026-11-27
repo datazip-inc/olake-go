@@ -377,9 +377,11 @@ func normalizeIcebergMetadata(file icebergMetadataFile, files []icebergFile) (De
 	slices.Sort(changed)
 	m.set(MetaFieldIDs, "changed", strings.Join(changed, ","))
 
-	// properties and olake_2pc
+	// properties and olake_2pc. olake.partition-fields is bookkeeping for partition evolution, not a property of the
+	// data: a table an older release created records it on the first sync of a newer one, so only one side of an
+	// upgrade run has it.
 	for key, value := range file.Properties {
-		if key != "olake_2pc" {
+		if key != "olake_2pc" && key != "olake.partition-fields" {
 			m.set(MetaProperties, key, value)
 		}
 	}
