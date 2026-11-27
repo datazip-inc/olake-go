@@ -421,8 +421,10 @@ func MySQLTableSchemaQuery() string {
 		SELECT 
 			COLUMN_NAME, 
 			COLUMN_TYPE,
-			DATA_TYPE, 
+			DATA_TYPE,
 			CHARACTER_MAXIMUM_LENGTH,
+			NUMERIC_PRECISION,
+			NUMERIC_SCALE,
 			IS_NULLABLE,
 			COLUMN_KEY
 		FROM 
@@ -509,6 +511,21 @@ func MySQLMasterStatusQuery() string {
 // MySQLMasterStatusQuery returns the query to fetch the current binlog position in MySQL: mysql v8.4 and above
 func MySQLMasterStatusQueryNew() string {
 	return "SHOW BINARY LOG STATUS"
+}
+
+// MySQLServerUUIDQuery returns the query to fetch the MySQL server UUID.
+func MySQLServerUUIDQuery() string {
+	return "SELECT @@server_uuid"
+}
+
+// MySQLGTIDModeQuery returns the query to fetch the server UUID and GTID mode.
+func MySQLGTIDModeQuery() string {
+	return "SELECT @@server_uuid, @@gtid_mode"
+}
+
+// MySQLGTIDStateQuery returns the query to fetch server identity and GTID history.
+func MySQLGTIDStateQuery() string {
+	return "SELECT @@server_uuid, @@gtid_mode, @@global.gtid_executed, @@global.gtid_purged"
 }
 
 // MySQLLogBinQuery returns the query to fetch the log_bin variable in MySQL
@@ -626,9 +643,9 @@ func MySQLTimeZoneQuery() string {
 
 // MySQLVersion returns the version of the MySQL server
 // It returns the flavor, major and minor version of the MySQL server
-func MySQLVersion(ctx context.Context, client *sqlx.DB) (string, int, int, error) {
+func MySQLVersion(ctx context.Context, client sqlx.QueryerContext) (string, int, int, error) {
 	var version string
-	err := client.QueryRowContext(ctx, "SELECT @@version").Scan(&version)
+	err := client.QueryRowxContext(ctx, "SELECT @@version").Scan(&version)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("failed to get MySQL version: %w", err)
 	}
@@ -693,6 +710,8 @@ func MSSQLTableSchemaQuery() string {
 	return `
 		SELECT  c.COLUMN_NAME,
 		        c.DATA_TYPE,
+		        c.NUMERIC_PRECISION,
+		        c.NUMERIC_SCALE,
 		        c.IS_NULLABLE,
 		        CAST(CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 1 ELSE 0 END AS BIT) AS IS_PRIMARY_KEY
 		FROM    INFORMATION_SCHEMA.COLUMNS AS c
@@ -1674,6 +1693,8 @@ func DB2TableSchemaAndPrimaryKeysQuery() string {
 		SELECT
 			c.COLNAME   AS column_name,
 			c.TYPENAME  AS data_type,
+			c.LENGTH    AS data_precision,
+			c.SCALE     AS data_scale,
 			c.NULLS     AS is_nullable,
 			k.COLNAME   AS pk_column
 		FROM SYSCAT.COLUMNS c
