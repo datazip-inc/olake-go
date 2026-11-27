@@ -50,6 +50,10 @@ message IcebergPayload {
     DeleteMode delete_mode = 11;
     // Whether the catalog allows declaring identifier_field on the table; only equality deletes need it declared.
     bool declare_identifier_fields = 12;
+    // GET_OR_CREATE_TABLE: evolve an existing table's partition spec to partition_fields in
+    // place. Only sent for streams that write no delete files; the server refuses a table that
+    // already has some. When false, a table whose spec differs from partition_fields is rejected.
+    bool evolve_partition_spec = 13;
   }
 
   message SchemaField {
@@ -105,6 +109,12 @@ message RecordIngestResponse {
   // RECORDS: returned when rows are written, detailing where they landed so
   // the sender can update its table index. Order matches the request records.
   repeated FilePositionMap file_position_maps = 6;
+
+  // GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+  // Fields are in spec order, which is the order partition values must be sent in;
+  // it can differ from partition_fields, since evolution appends added fields.
+  optional int32 partition_spec_id = 7;
+  repeated IcebergPayload.PartitionField partition_spec_fields = 8;
 }
 
 // FilePositionMap describes row ranges written to a single data file.
@@ -178,6 +188,9 @@ message ArrowPayload {
     string file_path = 2;
     int64 record_count = 3;
     repeated PartitionValue partition_values = 5;
+    // Partition spec partition_values were computed for. Unset falls back to the
+    // table's default spec. Only set on data files.
+    optional int32 spec_id = 6;
   }
 
   message FileUploadRequest {

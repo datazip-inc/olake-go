@@ -118,6 +118,7 @@ public class OlakeArrowIngester extends ArrowIngestServiceGrpc.ArrowIngestServic
                             }
                             case FILE_TYPE_DATA -> {
                                 session.op.registerDataFiles(threadId, session.icebergTable, filePath,
+                                        fileMeta.hasSpecId() ? fileMeta.getSpecId() : null,
                                         fileMeta.getPartitionValuesList());
                                 dataFileCount++;
                             }

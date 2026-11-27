@@ -3,7 +3,10 @@ package iceberg
 import (
 	"testing"
 
+	"github.com/datazip-inc/olake/destination/iceberg/internal"
+	"github.com/datazip-inc/olake/destination/iceberg/proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsValidTypeForColumn(t *testing.T) {
@@ -246,6 +249,58 @@ func TestParseSchema(t *testing.T) {
 			schema, err := parseSchema(tc.schema)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.want, schema)
+		})
+	}
+}
+
+func TestOrderPartitionInfoBySpec(t *testing.T) {
+	createdAt := internal.PartitionInfo{Field: "CreatedAt", SchemaField: "createdat", Transform: "month"}
+	id := internal.PartitionInfo{Field: "id", SchemaField: "id", Transform: "bucket[ 8 ]"}
+	specField := func(field, transform string) *proto.IcebergPayload_PartitionField {
+		return &proto.IcebergPayload_PartitionField{Field: field, Transform: transform}
+	}
+
+	testCases := []struct {
+		name          string
+		partitionInfo []internal.PartitionInfo
+		specFields    []*proto.IcebergPayload_PartitionField
+		want          []internal.PartitionInfo
+		wantErr       bool
+	}{
+		{
+			name:          "unpartitioned",
+			partitionInfo: []internal.PartitionInfo{},
+			want:          []internal.PartitionInfo{},
+		},
+		{
+			name:          "evolved spec appends the added field, so values follow the spec order",
+			partitionInfo: []internal.PartitionInfo{createdAt, id},
+			specFields:    []*proto.IcebergPayload_PartitionField{specField("id", "bucket[8]"), specField("createdat", "month")},
+			want:          []internal.PartitionInfo{id, createdAt},
+		},
+		{
+			name:          "spec field missing from the regex",
+			partitionInfo: []internal.PartitionInfo{createdAt},
+			specFields:    []*proto.IcebergPayload_PartitionField{specField("createdat", "day")},
+			wantErr:       true,
+		},
+		{
+			name:          "regex field missing from the spec",
+			partitionInfo: []internal.PartitionInfo{createdAt, id},
+			specFields:    []*proto.IcebergPayload_PartitionField{specField("createdat", "month")},
+			wantErr:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := orderPartitionInfoBySpec(tc.partitionInfo, tc.specFields)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

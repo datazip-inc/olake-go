@@ -75,7 +75,7 @@ func newTestWriter(t *testing.T, partitionInfo []internal.PartitionInfo) (*Arrow
 	stream := &types.ConfiguredStream{Stream: &types.Stream{Name: "t", Namespace: "n"}, StreamMetadata: types.StreamMetadata{UpdateType: &updateType}}
 	index := types.NewStreamIndexThread(committedIndex{})
 	schema := map[string]string{"_olake_id": "string", "_op_type": "string", "_olake_timestamp": "timestamptz", "payload": "string"}
-	w, err := New(context.Background(), &destination.Options{ThreadID: "th", TableIndex: committedIndex{}}, partitionInfo, schema, stream, server, true, index)
+	w, err := New(context.Background(), &destination.Options{ThreadID: "th", TableIndex: committedIndex{}}, partitionInfo, nil, schema, stream, server, true, index)
 	require.NoError(t, err)
 	return w, server, index
 }

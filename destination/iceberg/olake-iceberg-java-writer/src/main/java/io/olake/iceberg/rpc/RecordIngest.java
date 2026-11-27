@@ -575,6 +575,18 @@ public final class RecordIngest {
        * @return The declareIdentifierFields.
        */
       boolean getDeclareIdentifierFields();
+
+      /**
+       * <pre>
+       * GET_OR_CREATE_TABLE: evolve an existing table's partition spec to partition_fields in
+       * place. Only sent for streams that write no delete files; the server refuses a table that
+       * already has some. When false, a table whose spec differs from partition_fields is rejected.
+       * </pre>
+       *
+       * <code>bool evolve_partition_spec = 13;</code>
+       * @return The evolvePartitionSpec.
+       */
+      boolean getEvolvePartitionSpec();
     }
     /**
      * Protobuf type {@code io.olake.iceberg.rpc.IcebergPayload.Metadata}
@@ -1000,6 +1012,23 @@ public final class RecordIngest {
         return declareIdentifierFields_;
       }
 
+      public static final int EVOLVE_PARTITION_SPEC_FIELD_NUMBER = 13;
+      private boolean evolvePartitionSpec_ = false;
+      /**
+       * <pre>
+       * GET_OR_CREATE_TABLE: evolve an existing table's partition spec to partition_fields in
+       * place. Only sent for streams that write no delete files; the server refuses a table that
+       * already has some. When false, a table whose spec differs from partition_fields is rejected.
+       * </pre>
+       *
+       * <code>bool evolve_partition_spec = 13;</code>
+       * @return The evolvePartitionSpec.
+       */
+      @java.lang.Override
+      public boolean getEvolvePartitionSpec() {
+        return evolvePartitionSpec_;
+      }
+
       private byte memoizedIsInitialized = -1;
       @java.lang.Override
       public final boolean isInitialized() {
@@ -1046,6 +1075,9 @@ public final class RecordIngest {
         }
         if (declareIdentifierFields_ != false) {
           output.writeBool(12, declareIdentifierFields_);
+        }
+        if (evolvePartitionSpec_ != false) {
+          output.writeBool(13, evolvePartitionSpec_);
         }
         getUnknownFields().writeTo(output);
       }
@@ -1095,6 +1127,10 @@ public final class RecordIngest {
           size += com.google.protobuf.CodedOutputStream
             .computeBoolSize(12, declareIdentifierFields_);
         }
+        if (evolvePartitionSpec_ != false) {
+          size += com.google.protobuf.CodedOutputStream
+            .computeBoolSize(13, evolvePartitionSpec_);
+        }
         size += getUnknownFields().getSerializedSize();
         memoizedSize = size;
         return size;
@@ -1137,6 +1173,8 @@ public final class RecordIngest {
         if (deleteMode_ != other.deleteMode_) return false;
         if (getDeclareIdentifierFields()
             != other.getDeclareIdentifierFields()) return false;
+        if (getEvolvePartitionSpec()
+            != other.getEvolvePartitionSpec()) return false;
         if (!getUnknownFields().equals(other.getUnknownFields())) return false;
         return true;
       }
@@ -1181,6 +1219,9 @@ public final class RecordIngest {
         hash = (37 * hash) + DECLARE_IDENTIFIER_FIELDS_FIELD_NUMBER;
         hash = (53 * hash) + com.google.protobuf.Internal.hashBoolean(
             getDeclareIdentifierFields());
+        hash = (37 * hash) + EVOLVE_PARTITION_SPEC_FIELD_NUMBER;
+        hash = (53 * hash) + com.google.protobuf.Internal.hashBoolean(
+            getEvolvePartitionSpec());
         hash = (29 * hash) + getUnknownFields().hashCode();
         memoizedHashCode = hash;
         return hash;
@@ -1335,6 +1376,7 @@ public final class RecordIngest {
           baseSnapshotId_ = 0L;
           deleteMode_ = 0;
           declareIdentifierFields_ = false;
+          evolvePartitionSpec_ = false;
           return this;
         }
 
@@ -1419,6 +1461,9 @@ public final class RecordIngest {
           }
           if (((from_bitField0_ & 0x00000400) != 0)) {
             result.declareIdentifierFields_ = declareIdentifierFields_;
+          }
+          if (((from_bitField0_ & 0x00000800) != 0)) {
+            result.evolvePartitionSpec_ = evolvePartitionSpec_;
           }
           result.bitField0_ |= to_bitField0_;
         }
@@ -1556,6 +1601,9 @@ public final class RecordIngest {
           if (other.getDeclareIdentifierFields() != false) {
             setDeclareIdentifierFields(other.getDeclareIdentifierFields());
           }
+          if (other.getEvolvePartitionSpec() != false) {
+            setEvolvePartitionSpec(other.getEvolvePartitionSpec());
+          }
           this.mergeUnknownFields(other.getUnknownFields());
           onChanged();
           return this;
@@ -1653,6 +1701,11 @@ public final class RecordIngest {
                   bitField0_ |= 0x00000400;
                   break;
                 } // case 96
+                case 104: {
+                  evolvePartitionSpec_ = input.readBool();
+                  bitField0_ |= 0x00000800;
+                  break;
+                } // case 104
                 default: {
                   if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                     done = true; // was an endgroup tag
@@ -2756,6 +2809,56 @@ public final class RecordIngest {
         public Builder clearDeclareIdentifierFields() {
           bitField0_ = (bitField0_ & ~0x00000400);
           declareIdentifierFields_ = false;
+          onChanged();
+          return this;
+        }
+
+        private boolean evolvePartitionSpec_ ;
+        /**
+         * <pre>
+         * GET_OR_CREATE_TABLE: evolve an existing table's partition spec to partition_fields in
+         * place. Only sent for streams that write no delete files; the server refuses a table that
+         * already has some. When false, a table whose spec differs from partition_fields is rejected.
+         * </pre>
+         *
+         * <code>bool evolve_partition_spec = 13;</code>
+         * @return The evolvePartitionSpec.
+         */
+        @java.lang.Override
+        public boolean getEvolvePartitionSpec() {
+          return evolvePartitionSpec_;
+        }
+        /**
+         * <pre>
+         * GET_OR_CREATE_TABLE: evolve an existing table's partition spec to partition_fields in
+         * place. Only sent for streams that write no delete files; the server refuses a table that
+         * already has some. When false, a table whose spec differs from partition_fields is rejected.
+         * </pre>
+         *
+         * <code>bool evolve_partition_spec = 13;</code>
+         * @param value The evolvePartitionSpec to set.
+         * @return This builder for chaining.
+         */
+        public Builder setEvolvePartitionSpec(boolean value) {
+
+          evolvePartitionSpec_ = value;
+          bitField0_ |= 0x00000800;
+          onChanged();
+          return this;
+        }
+        /**
+         * <pre>
+         * GET_OR_CREATE_TABLE: evolve an existing table's partition spec to partition_fields in
+         * place. Only sent for streams that write no delete files; the server refuses a table that
+         * already has some. When false, a table whose spec differs from partition_fields is rejected.
+         * </pre>
+         *
+         * <code>bool evolve_partition_spec = 13;</code>
+         * @return This builder for chaining.
+         */
+        public Builder clearEvolvePartitionSpec() {
+          bitField0_ = (bitField0_ & ~0x00000800);
+          evolvePartitionSpec_ = false;
           onChanged();
           return this;
         }
@@ -7965,6 +8068,53 @@ public final class RecordIngest {
      */
     io.olake.iceberg.rpc.RecordIngest.FilePositionMapOrBuilder getFilePositionMapsOrBuilder(
         int index);
+
+    /**
+     * <pre>
+     * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+     * Fields are in spec order, which is the order partition values must be sent in;
+     * it can differ from partition_fields, since evolution appends added fields.
+     * </pre>
+     *
+     * <code>optional int32 partition_spec_id = 7;</code>
+     * @return Whether the partitionSpecId field is set.
+     */
+    boolean hasPartitionSpecId();
+    /**
+     * <pre>
+     * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+     * Fields are in spec order, which is the order partition values must be sent in;
+     * it can differ from partition_fields, since evolution appends added fields.
+     * </pre>
+     *
+     * <code>optional int32 partition_spec_id = 7;</code>
+     * @return The partitionSpecId.
+     */
+    int getPartitionSpecId();
+
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    java.util.List<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField> 
+        getPartitionSpecFieldsList();
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField getPartitionSpecFields(int index);
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    int getPartitionSpecFieldsCount();
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    java.util.List<? extends io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder> 
+        getPartitionSpecFieldsOrBuilderList();
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder getPartitionSpecFieldsOrBuilder(
+        int index);
   }
   /**
    * Protobuf type {@code io.olake.iceberg.rpc.RecordIngestResponse}
@@ -7982,6 +8132,7 @@ public final class RecordIngest {
       result_ = "";
       olake2PcState_ = "";
       filePositionMaps_ = java.util.Collections.emptyList();
+      partitionSpecFields_ = java.util.Collections.emptyList();
     }
 
     @java.lang.Override
@@ -8004,6 +8155,7 @@ public final class RecordIngest {
               io.olake.iceberg.rpc.RecordIngest.RecordIngestResponse.class, io.olake.iceberg.rpc.RecordIngest.RecordIngestResponse.Builder.class);
     }
 
+    private int bitField0_;
     public static final int RESULT_FIELD_NUMBER = 1;
     @SuppressWarnings("serial")
     private volatile java.lang.Object result_ = "";
@@ -8204,6 +8356,78 @@ public final class RecordIngest {
       return filePositionMaps_.get(index);
     }
 
+    public static final int PARTITION_SPEC_ID_FIELD_NUMBER = 7;
+    private int partitionSpecId_ = 0;
+    /**
+     * <pre>
+     * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+     * Fields are in spec order, which is the order partition values must be sent in;
+     * it can differ from partition_fields, since evolution appends added fields.
+     * </pre>
+     *
+     * <code>optional int32 partition_spec_id = 7;</code>
+     * @return Whether the partitionSpecId field is set.
+     */
+    @java.lang.Override
+    public boolean hasPartitionSpecId() {
+      return ((bitField0_ & 0x00000001) != 0);
+    }
+    /**
+     * <pre>
+     * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+     * Fields are in spec order, which is the order partition values must be sent in;
+     * it can differ from partition_fields, since evolution appends added fields.
+     * </pre>
+     *
+     * <code>optional int32 partition_spec_id = 7;</code>
+     * @return The partitionSpecId.
+     */
+    @java.lang.Override
+    public int getPartitionSpecId() {
+      return partitionSpecId_;
+    }
+
+    public static final int PARTITION_SPEC_FIELDS_FIELD_NUMBER = 8;
+    @SuppressWarnings("serial")
+    private java.util.List<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField> partitionSpecFields_;
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    @java.lang.Override
+    public java.util.List<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField> getPartitionSpecFieldsList() {
+      return partitionSpecFields_;
+    }
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    @java.lang.Override
+    public java.util.List<? extends io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder> 
+        getPartitionSpecFieldsOrBuilderList() {
+      return partitionSpecFields_;
+    }
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    @java.lang.Override
+    public int getPartitionSpecFieldsCount() {
+      return partitionSpecFields_.size();
+    }
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    @java.lang.Override
+    public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField getPartitionSpecFields(int index) {
+      return partitionSpecFields_.get(index);
+    }
+    /**
+     * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+     */
+    @java.lang.Override
+    public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder getPartitionSpecFieldsOrBuilder(
+        int index) {
+      return partitionSpecFields_.get(index);
+    }
+
     private byte memoizedIsInitialized = -1;
     @java.lang.Override
     public final boolean isInitialized() {
@@ -8236,6 +8460,12 @@ public final class RecordIngest {
       for (int i = 0; i < filePositionMaps_.size(); i++) {
         output.writeMessage(6, filePositionMaps_.get(i));
       }
+      if (((bitField0_ & 0x00000001) != 0)) {
+        output.writeInt32(7, partitionSpecId_);
+      }
+      for (int i = 0; i < partitionSpecFields_.size(); i++) {
+        output.writeMessage(8, partitionSpecFields_.get(i));
+      }
       getUnknownFields().writeTo(output);
     }
 
@@ -8267,6 +8497,14 @@ public final class RecordIngest {
         size += com.google.protobuf.CodedOutputStream
           .computeMessageSize(6, filePositionMaps_.get(i));
       }
+      if (((bitField0_ & 0x00000001) != 0)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(7, partitionSpecId_);
+      }
+      for (int i = 0; i < partitionSpecFields_.size(); i++) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeMessageSize(8, partitionSpecFields_.get(i));
+      }
       size += getUnknownFields().getSerializedSize();
       memoizedSize = size;
       return size;
@@ -8294,6 +8532,13 @@ public final class RecordIngest {
           != other.getHasEqualityDeletes()) return false;
       if (!getFilePositionMapsList()
           .equals(other.getFilePositionMapsList())) return false;
+      if (hasPartitionSpecId() != other.hasPartitionSpecId()) return false;
+      if (hasPartitionSpecId()) {
+        if (getPartitionSpecId()
+            != other.getPartitionSpecId()) return false;
+      }
+      if (!getPartitionSpecFieldsList()
+          .equals(other.getPartitionSpecFieldsList())) return false;
       if (!getUnknownFields().equals(other.getUnknownFields())) return false;
       return true;
     }
@@ -8321,6 +8566,14 @@ public final class RecordIngest {
       if (getFilePositionMapsCount() > 0) {
         hash = (37 * hash) + FILE_POSITION_MAPS_FIELD_NUMBER;
         hash = (53 * hash) + getFilePositionMapsList().hashCode();
+      }
+      if (hasPartitionSpecId()) {
+        hash = (37 * hash) + PARTITION_SPEC_ID_FIELD_NUMBER;
+        hash = (53 * hash) + getPartitionSpecId();
+      }
+      if (getPartitionSpecFieldsCount() > 0) {
+        hash = (37 * hash) + PARTITION_SPEC_FIELDS_FIELD_NUMBER;
+        hash = (53 * hash) + getPartitionSpecFieldsList().hashCode();
       }
       hash = (29 * hash) + getUnknownFields().hashCode();
       memoizedHashCode = hash;
@@ -8465,6 +8718,14 @@ public final class RecordIngest {
           filePositionMapsBuilder_.clear();
         }
         bitField0_ = (bitField0_ & ~0x00000020);
+        partitionSpecId_ = 0;
+        if (partitionSpecFieldsBuilder_ == null) {
+          partitionSpecFields_ = java.util.Collections.emptyList();
+        } else {
+          partitionSpecFields_ = null;
+          partitionSpecFieldsBuilder_.clear();
+        }
+        bitField0_ = (bitField0_ & ~0x00000080);
         return this;
       }
 
@@ -8507,6 +8768,15 @@ public final class RecordIngest {
         } else {
           result.filePositionMaps_ = filePositionMapsBuilder_.build();
         }
+        if (partitionSpecFieldsBuilder_ == null) {
+          if (((bitField0_ & 0x00000080) != 0)) {
+            partitionSpecFields_ = java.util.Collections.unmodifiableList(partitionSpecFields_);
+            bitField0_ = (bitField0_ & ~0x00000080);
+          }
+          result.partitionSpecFields_ = partitionSpecFields_;
+        } else {
+          result.partitionSpecFields_ = partitionSpecFieldsBuilder_.build();
+        }
       }
 
       private void buildPartial0(io.olake.iceberg.rpc.RecordIngest.RecordIngestResponse result) {
@@ -8526,6 +8796,12 @@ public final class RecordIngest {
         if (((from_bitField0_ & 0x00000010) != 0)) {
           result.hasEqualityDeletes_ = hasEqualityDeletes_;
         }
+        int to_bitField0_ = 0;
+        if (((from_bitField0_ & 0x00000040) != 0)) {
+          result.partitionSpecId_ = partitionSpecId_;
+          to_bitField0_ |= 0x00000001;
+        }
+        result.bitField0_ |= to_bitField0_;
       }
 
       @java.lang.Override
@@ -8617,6 +8893,35 @@ public final class RecordIngest {
             }
           }
         }
+        if (other.hasPartitionSpecId()) {
+          setPartitionSpecId(other.getPartitionSpecId());
+        }
+        if (partitionSpecFieldsBuilder_ == null) {
+          if (!other.partitionSpecFields_.isEmpty()) {
+            if (partitionSpecFields_.isEmpty()) {
+              partitionSpecFields_ = other.partitionSpecFields_;
+              bitField0_ = (bitField0_ & ~0x00000080);
+            } else {
+              ensurePartitionSpecFieldsIsMutable();
+              partitionSpecFields_.addAll(other.partitionSpecFields_);
+            }
+            onChanged();
+          }
+        } else {
+          if (!other.partitionSpecFields_.isEmpty()) {
+            if (partitionSpecFieldsBuilder_.isEmpty()) {
+              partitionSpecFieldsBuilder_.dispose();
+              partitionSpecFieldsBuilder_ = null;
+              partitionSpecFields_ = other.partitionSpecFields_;
+              bitField0_ = (bitField0_ & ~0x00000080);
+              partitionSpecFieldsBuilder_ = 
+                com.google.protobuf.GeneratedMessageV3.alwaysUseFieldBuilders ?
+                   getPartitionSpecFieldsFieldBuilder() : null;
+            } else {
+              partitionSpecFieldsBuilder_.addAllMessages(other.partitionSpecFields_);
+            }
+          }
+        }
         this.mergeUnknownFields(other.getUnknownFields());
         onChanged();
         return this;
@@ -8681,6 +8986,24 @@ public final class RecordIngest {
                 }
                 break;
               } // case 50
+              case 56: {
+                partitionSpecId_ = input.readInt32();
+                bitField0_ |= 0x00000040;
+                break;
+              } // case 56
+              case 66: {
+                io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField m =
+                    input.readMessage(
+                        io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.parser(),
+                        extensionRegistry);
+                if (partitionSpecFieldsBuilder_ == null) {
+                  ensurePartitionSpecFieldsIsMutable();
+                  partitionSpecFields_.add(m);
+                } else {
+                  partitionSpecFieldsBuilder_.addMessage(m);
+                }
+                break;
+              } // case 66
               default: {
                 if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                   done = true; // was an endgroup tag
@@ -9331,6 +9654,310 @@ public final class RecordIngest {
           filePositionMaps_ = null;
         }
         return filePositionMapsBuilder_;
+      }
+
+      private int partitionSpecId_ ;
+      /**
+       * <pre>
+       * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+       * Fields are in spec order, which is the order partition values must be sent in;
+       * it can differ from partition_fields, since evolution appends added fields.
+       * </pre>
+       *
+       * <code>optional int32 partition_spec_id = 7;</code>
+       * @return Whether the partitionSpecId field is set.
+       */
+      @java.lang.Override
+      public boolean hasPartitionSpecId() {
+        return ((bitField0_ & 0x00000040) != 0);
+      }
+      /**
+       * <pre>
+       * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+       * Fields are in spec order, which is the order partition values must be sent in;
+       * it can differ from partition_fields, since evolution appends added fields.
+       * </pre>
+       *
+       * <code>optional int32 partition_spec_id = 7;</code>
+       * @return The partitionSpecId.
+       */
+      @java.lang.Override
+      public int getPartitionSpecId() {
+        return partitionSpecId_;
+      }
+      /**
+       * <pre>
+       * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+       * Fields are in spec order, which is the order partition values must be sent in;
+       * it can differ from partition_fields, since evolution appends added fields.
+       * </pre>
+       *
+       * <code>optional int32 partition_spec_id = 7;</code>
+       * @param value The partitionSpecId to set.
+       * @return This builder for chaining.
+       */
+      public Builder setPartitionSpecId(int value) {
+
+        partitionSpecId_ = value;
+        bitField0_ |= 0x00000040;
+        onChanged();
+        return this;
+      }
+      /**
+       * <pre>
+       * GET_OR_CREATE_TABLE: the table's default partition spec, after any evolution.
+       * Fields are in spec order, which is the order partition values must be sent in;
+       * it can differ from partition_fields, since evolution appends added fields.
+       * </pre>
+       *
+       * <code>optional int32 partition_spec_id = 7;</code>
+       * @return This builder for chaining.
+       */
+      public Builder clearPartitionSpecId() {
+        bitField0_ = (bitField0_ & ~0x00000040);
+        partitionSpecId_ = 0;
+        onChanged();
+        return this;
+      }
+
+      private java.util.List<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField> partitionSpecFields_ =
+        java.util.Collections.emptyList();
+      private void ensurePartitionSpecFieldsIsMutable() {
+        if (!((bitField0_ & 0x00000080) != 0)) {
+          partitionSpecFields_ = new java.util.ArrayList<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField>(partitionSpecFields_);
+          bitField0_ |= 0x00000080;
+         }
+      }
+
+      private com.google.protobuf.RepeatedFieldBuilderV3<
+          io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder> partitionSpecFieldsBuilder_;
+
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public java.util.List<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField> getPartitionSpecFieldsList() {
+        if (partitionSpecFieldsBuilder_ == null) {
+          return java.util.Collections.unmodifiableList(partitionSpecFields_);
+        } else {
+          return partitionSpecFieldsBuilder_.getMessageList();
+        }
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public int getPartitionSpecFieldsCount() {
+        if (partitionSpecFieldsBuilder_ == null) {
+          return partitionSpecFields_.size();
+        } else {
+          return partitionSpecFieldsBuilder_.getCount();
+        }
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField getPartitionSpecFields(int index) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          return partitionSpecFields_.get(index);
+        } else {
+          return partitionSpecFieldsBuilder_.getMessage(index);
+        }
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder setPartitionSpecFields(
+          int index, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField value) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          if (value == null) {
+            throw new NullPointerException();
+          }
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.set(index, value);
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.setMessage(index, value);
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder setPartitionSpecFields(
+          int index, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder builderForValue) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.set(index, builderForValue.build());
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.setMessage(index, builderForValue.build());
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder addPartitionSpecFields(io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField value) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          if (value == null) {
+            throw new NullPointerException();
+          }
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.add(value);
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.addMessage(value);
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder addPartitionSpecFields(
+          int index, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField value) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          if (value == null) {
+            throw new NullPointerException();
+          }
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.add(index, value);
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.addMessage(index, value);
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder addPartitionSpecFields(
+          io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder builderForValue) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.add(builderForValue.build());
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.addMessage(builderForValue.build());
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder addPartitionSpecFields(
+          int index, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder builderForValue) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.add(index, builderForValue.build());
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.addMessage(index, builderForValue.build());
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder addAllPartitionSpecFields(
+          java.lang.Iterable<? extends io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField> values) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          ensurePartitionSpecFieldsIsMutable();
+          com.google.protobuf.AbstractMessageLite.Builder.addAll(
+              values, partitionSpecFields_);
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.addAllMessages(values);
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder clearPartitionSpecFields() {
+        if (partitionSpecFieldsBuilder_ == null) {
+          partitionSpecFields_ = java.util.Collections.emptyList();
+          bitField0_ = (bitField0_ & ~0x00000080);
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.clear();
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public Builder removePartitionSpecFields(int index) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          ensurePartitionSpecFieldsIsMutable();
+          partitionSpecFields_.remove(index);
+          onChanged();
+        } else {
+          partitionSpecFieldsBuilder_.remove(index);
+        }
+        return this;
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder getPartitionSpecFieldsBuilder(
+          int index) {
+        return getPartitionSpecFieldsFieldBuilder().getBuilder(index);
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder getPartitionSpecFieldsOrBuilder(
+          int index) {
+        if (partitionSpecFieldsBuilder_ == null) {
+          return partitionSpecFields_.get(index);  } else {
+          return partitionSpecFieldsBuilder_.getMessageOrBuilder(index);
+        }
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public java.util.List<? extends io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder> 
+           getPartitionSpecFieldsOrBuilderList() {
+        if (partitionSpecFieldsBuilder_ != null) {
+          return partitionSpecFieldsBuilder_.getMessageOrBuilderList();
+        } else {
+          return java.util.Collections.unmodifiableList(partitionSpecFields_);
+        }
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder addPartitionSpecFieldsBuilder() {
+        return getPartitionSpecFieldsFieldBuilder().addBuilder(
+            io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.getDefaultInstance());
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder addPartitionSpecFieldsBuilder(
+          int index) {
+        return getPartitionSpecFieldsFieldBuilder().addBuilder(
+            index, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.getDefaultInstance());
+      }
+      /**
+       * <code>repeated .io.olake.iceberg.rpc.IcebergPayload.PartitionField partition_spec_fields = 8;</code>
+       */
+      public java.util.List<io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder> 
+           getPartitionSpecFieldsBuilderList() {
+        return getPartitionSpecFieldsFieldBuilder().getBuilderList();
+      }
+      private com.google.protobuf.RepeatedFieldBuilderV3<
+          io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder> 
+          getPartitionSpecFieldsFieldBuilder() {
+        if (partitionSpecFieldsBuilder_ == null) {
+          partitionSpecFieldsBuilder_ = new com.google.protobuf.RepeatedFieldBuilderV3<
+              io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionField.Builder, io.olake.iceberg.rpc.RecordIngest.IcebergPayload.PartitionFieldOrBuilder>(
+                  partitionSpecFields_,
+                  ((bitField0_ & 0x00000080) != 0),
+                  getParentForChildren(),
+                  isClean());
+          partitionSpecFields_ = null;
+        }
+        return partitionSpecFieldsBuilder_;
       }
       @java.lang.Override
       public final Builder setUnknownFields(
@@ -11267,6 +11894,27 @@ public final class RecordIngest {
        */
       io.olake.iceberg.rpc.RecordIngest.ArrowPayload.FileMetadata.PartitionValueOrBuilder getPartitionValuesOrBuilder(
           int index);
+
+      /**
+       * <pre>
+       * Partition spec partition_values were computed for. Unset falls back to the
+       * table's default spec. Only set on data files.
+       * </pre>
+       *
+       * <code>optional int32 spec_id = 6;</code>
+       * @return Whether the specId field is set.
+       */
+      boolean hasSpecId();
+      /**
+       * <pre>
+       * Partition spec partition_values were computed for. Unset falls back to the
+       * table's default spec. Only set on data files.
+       * </pre>
+       *
+       * <code>optional int32 spec_id = 6;</code>
+       * @return The specId.
+       */
+      int getSpecId();
     }
     /**
      * Protobuf type {@code io.olake.iceberg.rpc.ArrowPayload.FileMetadata}
@@ -12833,6 +13481,7 @@ public final class RecordIngest {
 
       }
 
+      private int bitField0_;
       public static final int FILE_TYPE_FIELD_NUMBER = 1;
       @SuppressWarnings("serial")
       private volatile java.lang.Object fileType_ = "";
@@ -12963,6 +13612,35 @@ public final class RecordIngest {
         return partitionValues_.get(index);
       }
 
+      public static final int SPEC_ID_FIELD_NUMBER = 6;
+      private int specId_ = 0;
+      /**
+       * <pre>
+       * Partition spec partition_values were computed for. Unset falls back to the
+       * table's default spec. Only set on data files.
+       * </pre>
+       *
+       * <code>optional int32 spec_id = 6;</code>
+       * @return Whether the specId field is set.
+       */
+      @java.lang.Override
+      public boolean hasSpecId() {
+        return ((bitField0_ & 0x00000001) != 0);
+      }
+      /**
+       * <pre>
+       * Partition spec partition_values were computed for. Unset falls back to the
+       * table's default spec. Only set on data files.
+       * </pre>
+       *
+       * <code>optional int32 spec_id = 6;</code>
+       * @return The specId.
+       */
+      @java.lang.Override
+      public int getSpecId() {
+        return specId_;
+      }
+
       private byte memoizedIsInitialized = -1;
       @java.lang.Override
       public final boolean isInitialized() {
@@ -12989,6 +13667,9 @@ public final class RecordIngest {
         for (int i = 0; i < partitionValues_.size(); i++) {
           output.writeMessage(5, partitionValues_.get(i));
         }
+        if (((bitField0_ & 0x00000001) != 0)) {
+          output.writeInt32(6, specId_);
+        }
         getUnknownFields().writeTo(output);
       }
 
@@ -13011,6 +13692,10 @@ public final class RecordIngest {
         for (int i = 0; i < partitionValues_.size(); i++) {
           size += com.google.protobuf.CodedOutputStream
             .computeMessageSize(5, partitionValues_.get(i));
+        }
+        if (((bitField0_ & 0x00000001) != 0)) {
+          size += com.google.protobuf.CodedOutputStream
+            .computeInt32Size(6, specId_);
         }
         size += getUnknownFields().getSerializedSize();
         memoizedSize = size;
@@ -13035,6 +13720,11 @@ public final class RecordIngest {
             != other.getRecordCount()) return false;
         if (!getPartitionValuesList()
             .equals(other.getPartitionValuesList())) return false;
+        if (hasSpecId() != other.hasSpecId()) return false;
+        if (hasSpecId()) {
+          if (getSpecId()
+              != other.getSpecId()) return false;
+        }
         if (!getUnknownFields().equals(other.getUnknownFields())) return false;
         return true;
       }
@@ -13056,6 +13746,10 @@ public final class RecordIngest {
         if (getPartitionValuesCount() > 0) {
           hash = (37 * hash) + PARTITION_VALUES_FIELD_NUMBER;
           hash = (53 * hash) + getPartitionValuesList().hashCode();
+        }
+        if (hasSpecId()) {
+          hash = (37 * hash) + SPEC_ID_FIELD_NUMBER;
+          hash = (53 * hash) + getSpecId();
         }
         hash = (29 * hash) + getUnknownFields().hashCode();
         memoizedHashCode = hash;
@@ -13198,6 +13892,7 @@ public final class RecordIngest {
             partitionValuesBuilder_.clear();
           }
           bitField0_ = (bitField0_ & ~0x00000008);
+          specId_ = 0;
           return this;
         }
 
@@ -13253,6 +13948,12 @@ public final class RecordIngest {
           if (((from_bitField0_ & 0x00000004) != 0)) {
             result.recordCount_ = recordCount_;
           }
+          int to_bitField0_ = 0;
+          if (((from_bitField0_ & 0x00000010) != 0)) {
+            result.specId_ = specId_;
+            to_bitField0_ |= 0x00000001;
+          }
+          result.bitField0_ |= to_bitField0_;
         }
 
         @java.lang.Override
@@ -13338,6 +14039,9 @@ public final class RecordIngest {
               }
             }
           }
+          if (other.hasSpecId()) {
+            setSpecId(other.getSpecId());
+          }
           this.mergeUnknownFields(other.getUnknownFields());
           onChanged();
           return this;
@@ -13392,6 +14096,11 @@ public final class RecordIngest {
                   }
                   break;
                 } // case 42
+                case 48: {
+                  specId_ = input.readInt32();
+                  bitField0_ |= 0x00000010;
+                  break;
+                } // case 48
                 default: {
                   if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                     done = true; // was an endgroup tag
@@ -13823,6 +14532,66 @@ public final class RecordIngest {
             partitionValues_ = null;
           }
           return partitionValuesBuilder_;
+        }
+
+        private int specId_ ;
+        /**
+         * <pre>
+         * Partition spec partition_values were computed for. Unset falls back to the
+         * table's default spec. Only set on data files.
+         * </pre>
+         *
+         * <code>optional int32 spec_id = 6;</code>
+         * @return Whether the specId field is set.
+         */
+        @java.lang.Override
+        public boolean hasSpecId() {
+          return ((bitField0_ & 0x00000010) != 0);
+        }
+        /**
+         * <pre>
+         * Partition spec partition_values were computed for. Unset falls back to the
+         * table's default spec. Only set on data files.
+         * </pre>
+         *
+         * <code>optional int32 spec_id = 6;</code>
+         * @return The specId.
+         */
+        @java.lang.Override
+        public int getSpecId() {
+          return specId_;
+        }
+        /**
+         * <pre>
+         * Partition spec partition_values were computed for. Unset falls back to the
+         * table's default spec. Only set on data files.
+         * </pre>
+         *
+         * <code>optional int32 spec_id = 6;</code>
+         * @param value The specId to set.
+         * @return This builder for chaining.
+         */
+        public Builder setSpecId(int value) {
+
+          specId_ = value;
+          bitField0_ |= 0x00000010;
+          onChanged();
+          return this;
+        }
+        /**
+         * <pre>
+         * Partition spec partition_values were computed for. Unset falls back to the
+         * table's default spec. Only set on data files.
+         * </pre>
+         *
+         * <code>optional int32 spec_id = 6;</code>
+         * @return This builder for chaining.
+         */
+        public Builder clearSpecId() {
+          bitField0_ = (bitField0_ & ~0x00000010);
+          specId_ = 0;
+          onChanged();
+          return this;
         }
         @java.lang.Override
         public final Builder setUnknownFields(
@@ -28653,12 +29422,12 @@ io.olake.iceberg.rpc.RecordIngest.IcebergPayload.IceRecord.FieldValue defaultVal
   static {
     java.lang.String[] descriptorData = {
       "\n\023record_ingest.proto\022\024io.olake.iceberg." +
-      "rpc\"\240\013\n\016IcebergPayload\022>\n\004type\030\001 \001(\01620.i" +
+      "rpc\"\277\013\n\016IcebergPayload\022>\n\004type\030\001 \001(\01620.i" +
       "o.olake.iceberg.rpc.IcebergPayload.Paylo" +
       "adType\022?\n\010metadata\030\002 \001(\0132-.io.olake.iceb" +
       "erg.rpc.IcebergPayload.Metadata\022?\n\007recor" +
       "ds\030\003 \003(\0132..io.olake.iceberg.rpc.IcebergP" +
-      "ayload.IceRecord\032\314\003\n\010Metadata\022\027\n\017dest_ta" +
+      "ayload.IceRecord\032\353\003\n\010Metadata\022\027\n\017dest_ta" +
       "ble_name\030\001 \001(\t\022\021\n\tthread_id\030\002 \001(\t\022\035\n\020ide" +
       "ntifier_field\030\003 \001(\tH\000\210\001\001\022@\n\006schema\030\004 \003(\013" +
       "20.io.olake.iceberg.rpc.IcebergPayload.S" +
@@ -28668,118 +29437,123 @@ io.olake.iceberg.rpc.RecordIngest.IcebergPayload.IceRecord.FieldValue defaultVal
       "ayload.PartitionField\022\035\n\020base_snapshot_i" +
       "d\030\n \001(\003H\001\210\001\001\022D\n\013delete_mode\030\013 \001(\0162/.io.o" +
       "lake.iceberg.rpc.IcebergPayload.DeleteMo" +
-      "de\022!\n\031declare_identifier_fields\030\014 \001(\010B\023\n" +
-      "\021_identifier_fieldB\023\n\021_base_snapshot_id\032" +
-      ",\n\013SchemaField\022\020\n\010ice_type\030\001 \001(\t\022\013\n\003key\030" +
-      "\002 \001(\t\0322\n\016PartitionField\022\r\n\005field\030\001 \001(\t\022\021" +
-      "\n\ttransform\030\002 \001(\t\032\210\003\n\tIceRecord\022I\n\006field" +
-      "s\030\001 \003(\01329.io.olake.iceberg.rpc.IcebergPa" +
-      "yload.IceRecord.FieldValue\022\023\n\013record_typ" +
-      "e\030\002 \001(\t\022\035\n\020delete_file_path\030\003 \001(\tH\000\210\001\001\022\034" +
-      "\n\017delete_position\030\004 \001(\003H\001\210\001\001\032\264\001\n\nFieldVa" +
-      "lue\022\026\n\014string_value\030\001 \001(\tH\000\022\023\n\tint_value" +
-      "\030\002 \001(\005H\000\022\024\n\nlong_value\030\003 \001(\003H\000\022\025\n\013float_" +
-      "value\030\004 \001(\002H\000\022\026\n\014double_value\030\005 \001(\001H\000\022\024\n" +
-      "\nbool_value\030\006 \001(\010H\000\022\025\n\013bytes_value\030\007 \001(\014" +
-      "H\000B\007\n\005valueB\023\n\021_delete_file_pathB\022\n\020_del" +
-      "ete_position\"\217\001\n\013PayloadType\022\013\n\007RECORDS\020" +
-      "\000\022\n\n\006COMMIT\020\001\022\021\n\rEVOLVE_SCHEMA\020\002\022\016\n\nDROP" +
-      "_TABLE\020\003\022\027\n\023GET_OR_CREATE_TABLE\020\004\022\030\n\024REF" +
-      "RESH_TABLE_SCHEMA\020\005\022\021\n\rCLOSE_SESSION\020\006\"~" +
-      "\n\nDeleteMode\022\033\n\027DELETE_MODE_UNSPECIFIED\020" +
-      "\000\022\030\n\024DELETE_MODE_EQUALITY\020\001\022\030\n\024DELETE_MO" +
-      "DE_POSITION\020\002\022\037\n\033DELETE_MODE_DELETION_VE" +
-      "CTOR\020\003\"\306\001\n\024RecordIngestResponse\022\016\n\006resul" +
-      "t\030\001 \001(\t\022\017\n\007success\030\002 \001(\010\022\027\n\017olake_2pc_st" +
-      "ate\030\003 \001(\t\022\023\n\013snapshot_id\030\004 \001(\003\022\034\n\024has_eq" +
-      "uality_deletes\030\005 \001(\010\022A\n\022file_position_ma" +
-      "ps\030\006 \003(\0132%.io.olake.iceberg.rpc.FilePosi" +
-      "tionMap\"\252\001\n\017FilePositionMap\022\021\n\tfile_path" +
-      "\030\001 \001(\t\022;\n\006ranges\030\002 \003(\0132+.io.olake.iceber" +
-      "g.rpc.FilePositionMap.Range\032G\n\005Range\022\027\n\017" +
-      "batch_start_idx\030\001 \001(\005\022\026\n\016start_position\030" +
-      "\002 \001(\003\022\r\n\005count\030\003 \001(\005\"\266\n\n\014ArrowPayload\022<\n" +
-      "\004type\030\001 \001(\0162..io.olake.iceberg.rpc.Arrow" +
-      "Payload.PayloadType\022=\n\010metadata\030\002 \001(\0132+." +
-      "io.olake.iceberg.rpc.ArrowPayload.Metada" +
-      "ta\032\370\002\n\014FileMetadata\022\021\n\tfile_type\030\001 \001(\t\022\021" +
-      "\n\tfile_path\030\002 \001(\t\022\024\n\014record_count\030\003 \001(\003\022" +
-      "X\n\020partition_values\030\005 \003(\0132>.io.olake.ice" +
+      "de\022!\n\031declare_identifier_fields\030\014 \001(\010\022\035\n" +
+      "\025evolve_partition_spec\030\r \001(\010B\023\n\021_identif" +
+      "ier_fieldB\023\n\021_base_snapshot_id\032,\n\013Schema" +
+      "Field\022\020\n\010ice_type\030\001 \001(\t\022\013\n\003key\030\002 \001(\t\0322\n\016" +
+      "PartitionField\022\r\n\005field\030\001 \001(\t\022\021\n\ttransfo" +
+      "rm\030\002 \001(\t\032\210\003\n\tIceRecord\022I\n\006fields\030\001 \003(\01329" +
+      ".io.olake.iceberg.rpc.IcebergPayload.Ice" +
+      "Record.FieldValue\022\023\n\013record_type\030\002 \001(\t\022\035" +
+      "\n\020delete_file_path\030\003 \001(\tH\000\210\001\001\022\034\n\017delete_" +
+      "position\030\004 \001(\003H\001\210\001\001\032\264\001\n\nFieldValue\022\026\n\014st" +
+      "ring_value\030\001 \001(\tH\000\022\023\n\tint_value\030\002 \001(\005H\000\022" +
+      "\024\n\nlong_value\030\003 \001(\003H\000\022\025\n\013float_value\030\004 \001" +
+      "(\002H\000\022\026\n\014double_value\030\005 \001(\001H\000\022\024\n\nbool_val" +
+      "ue\030\006 \001(\010H\000\022\025\n\013bytes_value\030\007 \001(\014H\000B\007\n\005val" +
+      "ueB\023\n\021_delete_file_pathB\022\n\020_delete_posit" +
+      "ion\"\217\001\n\013PayloadType\022\013\n\007RECORDS\020\000\022\n\n\006COMM" +
+      "IT\020\001\022\021\n\rEVOLVE_SCHEMA\020\002\022\016\n\nDROP_TABLE\020\003\022" +
+      "\027\n\023GET_OR_CREATE_TABLE\020\004\022\030\n\024REFRESH_TABL" +
+      "E_SCHEMA\020\005\022\021\n\rCLOSE_SESSION\020\006\"~\n\nDeleteM" +
+      "ode\022\033\n\027DELETE_MODE_UNSPECIFIED\020\000\022\030\n\024DELE" +
+      "TE_MODE_EQUALITY\020\001\022\030\n\024DELETE_MODE_POSITI" +
+      "ON\020\002\022\037\n\033DELETE_MODE_DELETION_VECTOR\020\003\"\320\002" +
+      "\n\024RecordIngestResponse\022\016\n\006result\030\001 \001(\t\022\017" +
+      "\n\007success\030\002 \001(\010\022\027\n\017olake_2pc_state\030\003 \001(\t" +
+      "\022\023\n\013snapshot_id\030\004 \001(\003\022\034\n\024has_equality_de" +
+      "letes\030\005 \001(\010\022A\n\022file_position_maps\030\006 \003(\0132" +
+      "%.io.olake.iceberg.rpc.FilePositionMap\022\036" +
+      "\n\021partition_spec_id\030\007 \001(\005H\000\210\001\001\022R\n\025partit" +
+      "ion_spec_fields\030\010 \003(\01323.io.olake.iceberg" +
+      ".rpc.IcebergPayload.PartitionFieldB\024\n\022_p" +
+      "artition_spec_id\"\252\001\n\017FilePositionMap\022\021\n\t" +
+      "file_path\030\001 \001(\t\022;\n\006ranges\030\002 \003(\0132+.io.ola" +
+      "ke.iceberg.rpc.FilePositionMap.Range\032G\n\005" +
+      "Range\022\027\n\017batch_start_idx\030\001 \001(\005\022\026\n\016start_" +
+      "position\030\002 \001(\003\022\r\n\005count\030\003 \001(\005\"\330\n\n\014ArrowP" +
+      "ayload\022<\n\004type\030\001 \001(\0162..io.olake.iceberg." +
+      "rpc.ArrowPayload.PayloadType\022=\n\010metadata" +
+      "\030\002 \001(\0132+.io.olake.iceberg.rpc.ArrowPaylo" +
+      "ad.Metadata\032\232\003\n\014FileMetadata\022\021\n\tfile_typ" +
+      "e\030\001 \001(\t\022\021\n\tfile_path\030\002 \001(\t\022\024\n\014record_cou" +
+      "nt\030\003 \001(\003\022X\n\020partition_values\030\005 \003(\0132>.io." +
+      "olake.iceberg.rpc.ArrowPayload.FileMetad" +
+      "ata.PartitionValue\022\024\n\007spec_id\030\006 \001(\005H\000\210\001\001" +
+      "\032\321\001\n\016PartitionValue\022\023\n\tint_value\030\001 \001(\005H\000" +
+      "\022\024\n\nlong_value\030\002 \001(\003H\000\022\026\n\014string_value\030\003" +
+      " \001(\tH\000\022\025\n\013float_value\030\004 \001(\002H\000\022\026\n\014double_" +
+      "value\030\005 \001(\001H\000\022\024\n\nbool_value\030\006 \001(\010H\000\022\025\n\013b" +
+      "ytes_value\030\007 \001(\014H\000\022\027\n\rdecimal_value\030\010 \001(" +
+      "\tH\000B\007\n\005valueB\n\n\010_spec_id\0329\n\021FileUploadRe" +
+      "quest\022\021\n\tfile_data\030\001 \001(\014\022\021\n\tfile_path\030\002 " +
+      "\001(\t\032\363\001\n\023DeletionVectorBatch\022M\n\007entries\030\001" +
+      " \003(\0132<.io.olake.iceberg.rpc.ArrowPayload" +
+      ".DeletionVectorBatch.Entry\032\214\001\n\005Entry\022\026\n\016" +
+      "data_file_path\030\001 \001(\t\022\021\n\tpositions\030\002 \003(\003\022" +
+      "X\n\020partition_values\030\003 \003(\0132>.io.olake.ice" +
       "berg.rpc.ArrowPayload.FileMetadata.Parti" +
-      "tionValue\032\321\001\n\016PartitionValue\022\023\n\tint_valu" +
-      "e\030\001 \001(\005H\000\022\024\n\nlong_value\030\002 \001(\003H\000\022\026\n\014strin" +
-      "g_value\030\003 \001(\tH\000\022\025\n\013float_value\030\004 \001(\002H\000\022\026" +
-      "\n\014double_value\030\005 \001(\001H\000\022\024\n\nbool_value\030\006 \001" +
-      "(\010H\000\022\025\n\013bytes_value\030\007 \001(\014H\000\022\027\n\rdecimal_v" +
-      "alue\030\010 \001(\tH\000B\007\n\005value\0329\n\021FileUploadReque" +
-      "st\022\021\n\tfile_data\030\001 \001(\014\022\021\n\tfile_path\030\002 \001(\t" +
-      "\032\363\001\n\023DeletionVectorBatch\022M\n\007entries\030\001 \003(" +
-      "\0132<.io.olake.iceberg.rpc.ArrowPayload.De" +
-      "letionVectorBatch.Entry\032\214\001\n\005Entry\022\026\n\016dat" +
-      "a_file_path\030\001 \001(\t\022\021\n\tpositions\030\002 \003(\003\022X\n\020" +
-      "partition_values\030\003 \003(\0132>.io.olake.iceber" +
-      "g.rpc.ArrowPayload.FileMetadata.Partitio" +
-      "nValue\032\217\003\n\010Metadata\022\027\n\017dest_table_name\030\001" +
-      " \001(\t\022\021\n\tthread_id\030\002 \001(\t\022F\n\rfile_metadata" +
-      "\030\003 \003(\0132/.io.olake.iceberg.rpc.ArrowPaylo" +
-      "ad.FileMetadata\022N\n\013file_upload\030\004 \001(\01324.i" +
-      "o.olake.iceberg.rpc.ArrowPayload.FileUpl" +
-      "oadRequestH\000\210\001\001\022\017\n\007payload\030\006 \001(\t\022\035\n\020base" +
-      "_snapshot_id\030\007 \001(\003H\001\210\001\001\022U\n\020deletion_vect" +
-      "ors\030\010 \001(\01326.io.olake.iceberg.rpc.ArrowPa" +
-      "yload.DeletionVectorBatchH\002\210\001\001B\016\n\014_file_" +
-      "uploadB\023\n\021_base_snapshot_idB\023\n\021_deletion" +
-      "_vectors\"k\n\013PayloadType\022\017\n\013UPLOAD_FILE\020\000" +
-      "\022\027\n\023REGISTER_AND_COMMIT\020\001\022\016\n\nJSONSCHEMA\020" +
-      "\002\022\014\n\010FILEPATH\020\003\022\024\n\020DELETION_VECTORS\020\004\"\335\001" +
-      "\n\023ArrowIngestResponse\022\016\n\006result\030\001 \001(\t\022U\n" +
-      "\016icebergSchemas\030\002 \003(\0132=.io.olake.iceberg" +
-      ".rpc.ArrowIngestResponse.IcebergSchemasE" +
-      "ntry\022\030\n\013snapshot_id\030\003 \001(\003H\000\210\001\001\0325\n\023Iceber" +
-      "gSchemasEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(" +
-      "\t:\0028\001B\016\n\014_snapshot_id\"^\n\025TableIndexScanR" +
-      "equest\022\021\n\tthread_id\030\001 \001(\t\022\035\n\020from_snapsh" +
-      "ot_id\030\002 \001(\003H\000\210\001\001B\023\n\021_from_snapshot_id\"\254\001" +
-      "\n\023TableIndexScanBatch\022@\n\007entries\030\001 \003(\0132/" +
-      ".io.olake.iceberg.rpc.TableIndexScanBatc" +
-      "h.Entry\022\023\n\013snapshot_id\030\002 \001(\003\032>\n\005Entry\022\020\n" +
-      "\010olake_id\030\001 \001(\t\022\021\n\tfile_path\030\002 \001(\t\022\020\n\010po" +
-      "sition\030\003 \001(\003\"x\n\035MigrateEqualityDeletesRe" +
-      "quest\022\021\n\tthread_id\030\001 \001(\t\022D\n\013target_mode\030" +
-      "\002 \001(\0162/.io.olake.iceberg.rpc.IcebergPayl" +
-      "oad.DeleteMode\"y\n\036MigrateEqualityDeletes" +
-      "Response\022\023\n\013snapshot_id\030\001 \001(\003\022\036\n\026rewritt" +
-      "en_delete_files\030\002 \001(\003\022\"\n\032positional_dele" +
-      "tes_written\030\003 \001(\003\"\370\001\n\017ReadRowsRequest\022\021\n" +
-      "\tthread_id\030\001 \001(\t\022=\n\005files\030\002 \003(\0132..io.ola" +
-      "ke.iceberg.rpc.ReadRowsRequest.FileRows\022" +
-      "\021\n\tmax_bytes\030\003 \001(\003\032(\n\003Row\022\020\n\010position\030\001 " +
-      "\001(\003\022\017\n\007columns\030\002 \003(\t\032V\n\010FileRows\022\021\n\tfile" +
-      "_path\030\001 \001(\t\0227\n\004rows\030\002 \003(\0132).io.olake.ice" +
-      "berg.rpc.ReadRowsRequest.Row\"\242\002\n\rReadRow" +
-      "sBatch\0225\n\004rows\030\001 \003(\0132\'.io.olake.iceberg." +
-      "rpc.ReadRowsBatch.Row\032\331\001\n\003Row\022\021\n\tfile_pa" +
-      "th\030\001 \001(\t\022\020\n\010position\030\002 \001(\003\022C\n\006values\030\003 \003" +
-      "(\01323.io.olake.iceberg.rpc.ReadRowsBatch." +
-      "Row.ValuesEntry\032h\n\013ValuesEntry\022\013\n\003key\030\001 " +
-      "\001(\t\022H\n\005value\030\002 \001(\01329.io.olake.iceberg.rp" +
-      "c.IcebergPayload.IceRecord.FieldValue:\0028" +
-      "\0012v\n\023RecordIngestService\022_\n\013SendRecords\022" +
-      "$.io.olake.iceberg.rpc.IcebergPayload\032*." +
-      "io.olake.iceberg.rpc.RecordIngestRespons" +
-      "e2q\n\022ArrowIngestService\022[\n\nIcebergAPI\022\"." +
-      "io.olake.iceberg.rpc.ArrowPayload\032).io.o" +
-      "lake.iceberg.rpc.ArrowIngestResponse2\345\002\n" +
-      "\021TableIndexService\022p\n\024ScanTableForIndexi" +
-      "ng\022+.io.olake.iceberg.rpc.TableIndexScan" +
-      "Request\032).io.olake.iceberg.rpc.TableInde" +
-      "xScanBatch0\001\022\203\001\n\026MigrateEqualityDeletes\022" +
-      "3.io.olake.iceberg.rpc.MigrateEqualityDe" +
-      "letesRequest\0324.io.olake.iceberg.rpc.Migr" +
-      "ateEqualityDeletesResponse\022X\n\010ReadRows\022%" +
-      ".io.olake.iceberg.rpc.ReadRowsRequest\032#." +
-      "io.olake.iceberg.rpc.ReadRowsBatch0\001B\035B\014" +
-      "RecordIngestZ\riceberg/protob\006proto3"
+      "tionValue\032\217\003\n\010Metadata\022\027\n\017dest_table_nam" +
+      "e\030\001 \001(\t\022\021\n\tthread_id\030\002 \001(\t\022F\n\rfile_metad" +
+      "ata\030\003 \003(\0132/.io.olake.iceberg.rpc.ArrowPa" +
+      "yload.FileMetadata\022N\n\013file_upload\030\004 \001(\0132" +
+      "4.io.olake.iceberg.rpc.ArrowPayload.File" +
+      "UploadRequestH\000\210\001\001\022\017\n\007payload\030\006 \001(\t\022\035\n\020b" +
+      "ase_snapshot_id\030\007 \001(\003H\001\210\001\001\022U\n\020deletion_v" +
+      "ectors\030\010 \001(\01326.io.olake.iceberg.rpc.Arro" +
+      "wPayload.DeletionVectorBatchH\002\210\001\001B\016\n\014_fi" +
+      "le_uploadB\023\n\021_base_snapshot_idB\023\n\021_delet" +
+      "ion_vectors\"k\n\013PayloadType\022\017\n\013UPLOAD_FIL" +
+      "E\020\000\022\027\n\023REGISTER_AND_COMMIT\020\001\022\016\n\nJSONSCHE" +
+      "MA\020\002\022\014\n\010FILEPATH\020\003\022\024\n\020DELETION_VECTORS\020\004" +
+      "\"\335\001\n\023ArrowIngestResponse\022\016\n\006result\030\001 \001(\t" +
+      "\022U\n\016icebergSchemas\030\002 \003(\0132=.io.olake.iceb" +
+      "erg.rpc.ArrowIngestResponse.IcebergSchem" +
+      "asEntry\022\030\n\013snapshot_id\030\003 \001(\003H\000\210\001\001\0325\n\023Ice" +
+      "bergSchemasEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002" +
+      " \001(\t:\0028\001B\016\n\014_snapshot_id\"^\n\025TableIndexSc" +
+      "anRequest\022\021\n\tthread_id\030\001 \001(\t\022\035\n\020from_sna" +
+      "pshot_id\030\002 \001(\003H\000\210\001\001B\023\n\021_from_snapshot_id" +
+      "\"\254\001\n\023TableIndexScanBatch\022@\n\007entries\030\001 \003(" +
+      "\0132/.io.olake.iceberg.rpc.TableIndexScanB" +
+      "atch.Entry\022\023\n\013snapshot_id\030\002 \001(\003\032>\n\005Entry" +
+      "\022\020\n\010olake_id\030\001 \001(\t\022\021\n\tfile_path\030\002 \001(\t\022\020\n" +
+      "\010position\030\003 \001(\003\"x\n\035MigrateEqualityDelete" +
+      "sRequest\022\021\n\tthread_id\030\001 \001(\t\022D\n\013target_mo" +
+      "de\030\002 \001(\0162/.io.olake.iceberg.rpc.IcebergP" +
+      "ayload.DeleteMode\"y\n\036MigrateEqualityDele" +
+      "tesResponse\022\023\n\013snapshot_id\030\001 \001(\003\022\036\n\026rewr" +
+      "itten_delete_files\030\002 \001(\003\022\"\n\032positional_d" +
+      "eletes_written\030\003 \001(\003\"\370\001\n\017ReadRowsRequest" +
+      "\022\021\n\tthread_id\030\001 \001(\t\022=\n\005files\030\002 \003(\0132..io." +
+      "olake.iceberg.rpc.ReadRowsRequest.FileRo" +
+      "ws\022\021\n\tmax_bytes\030\003 \001(\003\032(\n\003Row\022\020\n\010position" +
+      "\030\001 \001(\003\022\017\n\007columns\030\002 \003(\t\032V\n\010FileRows\022\021\n\tf" +
+      "ile_path\030\001 \001(\t\0227\n\004rows\030\002 \003(\0132).io.olake." +
+      "iceberg.rpc.ReadRowsRequest.Row\"\242\002\n\rRead" +
+      "RowsBatch\0225\n\004rows\030\001 \003(\0132\'.io.olake.icebe" +
+      "rg.rpc.ReadRowsBatch.Row\032\331\001\n\003Row\022\021\n\tfile" +
+      "_path\030\001 \001(\t\022\020\n\010position\030\002 \001(\003\022C\n\006values\030" +
+      "\003 \003(\01323.io.olake.iceberg.rpc.ReadRowsBat" +
+      "ch.Row.ValuesEntry\032h\n\013ValuesEntry\022\013\n\003key" +
+      "\030\001 \001(\t\022H\n\005value\030\002 \001(\01329.io.olake.iceberg" +
+      ".rpc.IcebergPayload.IceRecord.FieldValue" +
+      ":\0028\0012v\n\023RecordIngestService\022_\n\013SendRecor" +
+      "ds\022$.io.olake.iceberg.rpc.IcebergPayload" +
+      "\032*.io.olake.iceberg.rpc.RecordIngestResp" +
+      "onse2q\n\022ArrowIngestService\022[\n\nIcebergAPI" +
+      "\022\".io.olake.iceberg.rpc.ArrowPayload\032).i" +
+      "o.olake.iceberg.rpc.ArrowIngestResponse2" +
+      "\345\002\n\021TableIndexService\022p\n\024ScanTableForInd" +
+      "exing\022+.io.olake.iceberg.rpc.TableIndexS" +
+      "canRequest\032).io.olake.iceberg.rpc.TableI" +
+      "ndexScanBatch0\001\022\203\001\n\026MigrateEqualityDelet" +
+      "es\0223.io.olake.iceberg.rpc.MigrateEqualit" +
+      "yDeletesRequest\0324.io.olake.iceberg.rpc.M" +
+      "igrateEqualityDeletesResponse\022X\n\010ReadRow" +
+      "s\022%.io.olake.iceberg.rpc.ReadRowsRequest" +
+      "\032#.io.olake.iceberg.rpc.ReadRowsBatch0\001B" +
+      "\035B\014RecordIngestZ\riceberg/protob\006proto3"
     };
     descriptor = com.google.protobuf.Descriptors.FileDescriptor
       .internalBuildGeneratedFileFrom(descriptorData,
@@ -28796,7 +29570,7 @@ io.olake.iceberg.rpc.RecordIngest.IcebergPayload.IceRecord.FieldValue defaultVal
     internal_static_io_olake_iceberg_rpc_IcebergPayload_Metadata_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_io_olake_iceberg_rpc_IcebergPayload_Metadata_descriptor,
-        new java.lang.String[] { "DestTableName", "ThreadId", "IdentifierField", "Schema", "Payload", "Namespace", "Upsert", "PartitionFields", "BaseSnapshotId", "DeleteMode", "DeclareIdentifierFields", });
+        new java.lang.String[] { "DestTableName", "ThreadId", "IdentifierField", "Schema", "Payload", "Namespace", "Upsert", "PartitionFields", "BaseSnapshotId", "DeleteMode", "DeclareIdentifierFields", "EvolvePartitionSpec", });
     internal_static_io_olake_iceberg_rpc_IcebergPayload_SchemaField_descriptor =
       internal_static_io_olake_iceberg_rpc_IcebergPayload_descriptor.getNestedTypes().get(1);
     internal_static_io_olake_iceberg_rpc_IcebergPayload_SchemaField_fieldAccessorTable = new
@@ -28826,7 +29600,7 @@ io.olake.iceberg.rpc.RecordIngest.IcebergPayload.IceRecord.FieldValue defaultVal
     internal_static_io_olake_iceberg_rpc_RecordIngestResponse_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_io_olake_iceberg_rpc_RecordIngestResponse_descriptor,
-        new java.lang.String[] { "Result", "Success", "Olake2PcState", "SnapshotId", "HasEqualityDeletes", "FilePositionMaps", });
+        new java.lang.String[] { "Result", "Success", "Olake2PcState", "SnapshotId", "HasEqualityDeletes", "FilePositionMaps", "PartitionSpecId", "PartitionSpecFields", });
     internal_static_io_olake_iceberg_rpc_FilePositionMap_descriptor =
       getDescriptor().getMessageTypes().get(2);
     internal_static_io_olake_iceberg_rpc_FilePositionMap_fieldAccessorTable = new
@@ -28850,7 +29624,7 @@ io.olake.iceberg.rpc.RecordIngest.IcebergPayload.IceRecord.FieldValue defaultVal
     internal_static_io_olake_iceberg_rpc_ArrowPayload_FileMetadata_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_io_olake_iceberg_rpc_ArrowPayload_FileMetadata_descriptor,
-        new java.lang.String[] { "FileType", "FilePath", "RecordCount", "PartitionValues", });
+        new java.lang.String[] { "FileType", "FilePath", "RecordCount", "PartitionValues", "SpecId", });
     internal_static_io_olake_iceberg_rpc_ArrowPayload_FileMetadata_PartitionValue_descriptor =
       internal_static_io_olake_iceberg_rpc_ArrowPayload_FileMetadata_descriptor.getNestedTypes().get(0);
     internal_static_io_olake_iceberg_rpc_ArrowPayload_FileMetadata_PartitionValue_fieldAccessorTable = new

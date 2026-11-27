@@ -115,6 +115,8 @@ func (i *Iceberg) Setup(ctx context.Context, stream types.StreamInterface, _ any
 			Upsert:                  upsertMode,
 			DeleteMode:              protoDeleteMode(deleteMode),
 			PartitionFields:         icebergPartFields,
+			// a stream that writes no delete files can repartition its table in place
+			EvolvePartitionSpec: types.WritesOnlyAppends(stream),
 		},
 	}
 
@@ -125,6 +127,15 @@ func (i *Iceberg) Setup(ctx context.Context, stream types.StreamInterface, _ any
 
 	// get schema from response
 	ingestResponse := response.(*proto.RecordIngestResponse)
+
+	// partition values are positional, so they must follow the table's spec order
+	if ingestResponse.PartitionSpecId != nil {
+		i.partitionInfo, err = orderPartitionInfoBySpec(i.partitionInfo, ingestResponse.GetPartitionSpecFields())
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	schema, err := parseSchema(ingestResponse.GetResult())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse schema from resp[%s]: %w", ingestResponse.GetResult(), err)
@@ -149,7 +160,7 @@ func (i *Iceberg) Setup(ctx context.Context, stream types.StreamInterface, _ any
 	// in it, and the unavailable values resolver, which looks rows up in it
 	indexThread := types.NewStreamIndexThread(options.TableIndex)
 	if i.config.UseArrowWrites {
-		i.writer, err = arrowwriter.New(ctx, i.options, i.partitionInfo, i.schema, i.stream, i.server, upsertMode, indexThread)
+		i.writer, err = arrowwriter.New(ctx, i.options, i.partitionInfo, ingestResponse.PartitionSpecId, i.schema, i.stream, i.server, upsertMode, indexThread)
 		if err != nil {
 			return nil, nil, destination.WriteFailure(fmt.Errorf("failed to create arrow writer: %w", err))
 		}
@@ -542,6 +553,34 @@ func parsePartitionRegex(pattern string, resolveColumnName func(string) string) 
 	}
 
 	return partitionInfo, nil
+}
+
+// orderPartitionInfoBySpec reorders the partition_regex fields into the order of the table's partition spec.
+// They hold the same fields, which the server guarantees, but an evolved spec appends the fields it added,
+// so the order can differ from the regex.
+func orderPartitionInfoBySpec(partitionInfo []internal.PartitionInfo, specFields []*proto.IcebergPayload_PartitionField) ([]internal.PartitionInfo, error) {
+	byKey := make(map[string]internal.PartitionInfo, len(partitionInfo))
+	for _, p := range partitionInfo {
+		byKey[partitionKey(p.SchemaField, p.Transform)] = p
+	}
+
+	ordered := make([]internal.PartitionInfo, 0, len(specFields))
+	for _, f := range specFields {
+		p, ok := byKey[partitionKey(f.GetField(), f.GetTransform())]
+		if !ok {
+			return nil, fmt.Errorf("table partition field %s(%s) is not in the stream's partition_regex", f.GetTransform(), f.GetField())
+		}
+		ordered = append(ordered, p)
+	}
+	if len(ordered) != len(partitionInfo) {
+		return nil, fmt.Errorf("table partition spec has %d fields, stream's partition_regex has %d", len(ordered), len(partitionInfo))
+	}
+	return ordered, nil
+}
+
+// partitionKey identifies a partition field the way the server compares them: column plus normalized transform.
+func partitionKey(field, transform string) string {
+	return field + "|" + strings.ToLower(strings.Join(strings.Fields(transform), ""))
 }
 
 // isValidTypeForColumn reports whether a column of iceberg type columnType can take a value of

@@ -390,6 +390,13 @@ func (s *ConfiguredStream) UpsertApplies(destinationType DestinationType) bool {
 	return !s.AppendModeEnabled() && UpsertSupported(destinationType)
 }
 
+// WritesOnlyAppends reports whether the stream never writes delete files: append_mode is on, or the
+// sync mode is full_refresh, which only backfills. Such a stream's Iceberg table can have its
+// partition spec evolved in place, since no delete file can reference a data file of an older spec.
+func WritesOnlyAppends(stream StreamInterface) bool {
+	return stream.AppendModeEnabled() || stream.GetSyncMode() == FULLREFRESH
+}
+
 // ResolveUpsertOp is true when the source cannot differentiate create from update.
 // Kafka upsert (!append && dedup_keys set).
 func (s *ConfiguredStream) ResolveUpsertOp() bool {

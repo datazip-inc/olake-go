@@ -121,6 +121,7 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
                 DeleteMode deleteMode = DeleteMode.resolve(metadata.getDeleteMode());
                 List<IcebergPayload.SchemaField> schemaMetadata = metadata.getSchemaList();
                 List<Map<String, String>> partitionTransforms = toPartitionList(metadata.getPartitionFieldsList());
+                boolean evolvePartitionSpec = metadata.getEvolvePartitionSpec();
                 TableIdentifier tid = TableIdentifier.of(namespace, destTableName);
 
                 // If a session already exists for this threadId, remove it to force recreation
@@ -133,7 +134,8 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
                             Schema schema = new SchemaConvertor(
                                     declareIdentifierFields ? identifierField : "", schemaMetadata)
                                     .convertToIcebergSchema();
-                            Table icebergTable = loadOrCreateTable(tid, schema, partitionTransforms, deleteMode);
+                            Table icebergTable = loadOrCreateTable(tid, schema, partitionTransforms, deleteMode,
+                                    evolvePartitionSpec);
                             return new IcebergSession(icebergTable, upsert, identifierField, deleteMode);
                         });
             } else {
@@ -229,8 +231,9 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
     }
 
     /**
-     * Answers the GET_OR_CREATE_TABLE handshake with the table's current snapshot
-     * and whether it still carries equality deletes.
+     * Answers the GET_OR_CREATE_TABLE handshake with the table's current snapshot,
+     * whether it still carries equality deletes, and its default partition spec, whose
+     * field order is the order the caller must send partition values in.
      */
     private void sendTableResponse(StreamObserver<RecordIngest.RecordIngestResponse> responseObserver,
             String message, String olake2pcState, IcebergSession session) throws Exception {
@@ -239,6 +242,13 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
                 .setOlake2PcState(olake2pcState);
 
         Table table = session.icebergTable;
+        builder.setPartitionSpecId(table.spec().specId());
+        for (Map<String, String> field : IcebergUtil.partitionFields(table.spec(), table.schema())) {
+            builder.addPartitionSpecFields(IcebergPayload.PartitionField.newBuilder()
+                    .setField(field.get("field"))
+                    .setTransform(field.get("transform")));
+        }
+
         Snapshot current = table.currentSnapshot();
         if (current != null) {
             builder.setSnapshotId(current.snapshotId());
@@ -251,12 +261,26 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
         responseObserver.onCompleted();
     }
 
+    /**
+     * @param evolvePartitionSpec whether an existing table's partition spec may be evolved to
+     *                            partitionTransforms. Without it, a table partitioned differently is
+     *                            rejected: the caller computes partition values for partitionTransforms,
+     *                            and stamping them against another spec corrupts partition metadata.
+     */
     private Table loadOrCreateTable(TableIdentifier tableId, Schema schema, List<Map<String, String>> partitionTransforms,
-            DeleteMode deleteMode) {
+            DeleteMode deleteMode, boolean evolvePartitionSpec) {
         java.util.Optional<Table> existing = IcebergUtil.loadIcebergTable(icebergCatalog, tableId);
         if (existing.isPresent()) {
             Table table = existing.get();
             validateOrUpgradeFormatVersion(table, deleteMode);
+            if (evolvePartitionSpec) {
+                IcebergUtil.evolvePartitionSpec(table, schema, partitionTransforms);
+            } else if (!IcebergUtil.specMatches(table.spec(), table.schema(), partitionTransforms)) {
+                throw new UnsupportedOperationException(String.format(
+                    "%s is partitioned by %s but the stream's partition_regex asks for %s; partitioning can only "
+                        + "change in place for append-only streams, so clear the destination to repartition this stream",
+                    tableId, IcebergUtil.partitionFields(table.spec(), table.schema()), partitionTransforms));
+            }
             return table;
         }
 

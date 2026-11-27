@@ -39,6 +39,11 @@ type ArrowWriter struct {
 	// pendingVectors buffers positions per data file until a batch is worth sending. Only used under DeleteModeDeletionVector.
 	pendingVectors     map[string]*pendingVector
 	pendingVectorCount int
+	// specID is the id of the table partition spec that partitionInfo matches, as reported by GET_OR_CREATE_TABLE.
+	// Sent as spec_id on every data file, so the server registers the file under the spec its partition values
+	// were computed for, even if the table's default spec changes before commit. Nil when the server reports
+	// no spec id; the server then registers files under the table's default spec.
+	specID *int32
 }
 
 // pendingVector is the positions to delete from one data file, plus the partition it's stamped with (the one being written, not necessarily the referenced file's). First writer to touch a path wins - a data file carries only one vector.
@@ -79,10 +84,11 @@ type PositionalDelete struct {
 	Position int64
 }
 
-func New(ctx context.Context, options *destination.Options, partitionInfo []internal.PartitionInfo, schema map[string]string, stream types.StreamInterface, server internal.ServerClient, upsertMode bool, indexThread *types.StreamIndexThread) (*ArrowWriter, error) {
+func New(ctx context.Context, options *destination.Options, partitionInfo []internal.PartitionInfo, specID *int32, schema map[string]string, stream types.StreamInterface, server internal.ServerClient, upsertMode bool, indexThread *types.StreamIndexThread) (*ArrowWriter, error) {
 	writer := &ArrowWriter{
 		options:       options,
 		partitionInfo: partitionInfo,
+		specID:        specID,
 		schema:        schema,
 		stream:        stream,
 		server:        server,
@@ -766,6 +772,7 @@ func (w *ArrowWriter) uploadFile(ctx context.Context, rw *RollingWriter, partiti
 
 	switch rw.fileType {
 	case fileTypeData:
+		fileMeta.SpecId = w.specID
 		pf.DataFiles = append(pf.DataFiles, fileMeta)
 	case fileTypeEqualityDelete:
 		pf.EqDeleteFiles = append(pf.EqDeleteFiles, fileMeta)

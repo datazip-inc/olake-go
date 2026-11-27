@@ -431,6 +431,7 @@ func getDestDBPrefix(streams []*ConfiguredStream) (constantValue bool, prefix st
 // 2. Compares properties from streams: destination_database, destination_table, cursor_field, sync_mode
 // 3. For now, any new stream present in new catalog is added to the difference. Later collision detection will happen.
 // 4. Skips append_mode, dedup_keys and update_type for destinations that cannot upsert (parquet): they never change what is written there.
+// 5. Skips partition_regex for Iceberg streams that only append (see WritesOnlyAppends): the writer evolves the table's partition spec in place.
 //
 // Parameters:
 //   - oldStreams: The previous catalog to compare against
@@ -528,8 +529,12 @@ func GetStreamsDelta(oldStreams, newStreams *Catalog, destinationType Destinatio
 						!reflect.DeepEqual(oldMetadata.DedupKeys, newMetadata.DedupKeys) ||
 						dvDelta)
 
+				// an append-only Iceberg table keeps its data: the new spec applies to newly written files
+				partitionDelta := oldMetadata.PartitionRegex != newMetadata.PartitionRegex &&
+					!(destinationType == Iceberg && WritesOnlyAppends(newConfigured))
+
 				return (oldConfigured.NormalizationEnabled() != newConfigured.NormalizationEnabled()) ||
-					(oldMetadata.PartitionRegex != newMetadata.PartitionRegex) ||
+					partitionDelta ||
 					(oldMetadata.Filter != newMetadata.Filter) ||
 					(oldMetadata.UseSourceColumnNames != newMetadata.UseSourceColumnNames) ||
 					!reflect.DeepEqual(oldMetadata.FilterConfig, newMetadata.FilterConfig) ||

@@ -489,23 +489,34 @@ public class IcebergTableOperator {
     }
   }
 
-     public void registerDataFiles(String threadId, Table table, String filePath,
+     /**
+      * @param specId spec the partition values were computed for; null (a caller that predates
+      *               partition evolution) means the table's default spec. A file keeps the spec it was
+      *               written for even when the table has evolved since, which Iceberg accepts for any
+      *               spec in its history.
+      */
+     public void registerDataFiles(String threadId, Table table, String filePath, Integer specId,
                List<ArrowPayload.FileMetadata.PartitionValue> partitionValues) {
           try {
+               PartitionSpec spec = specId == null ? table.spec() : table.specs().get(specId);
+               if (spec == null) {
+                    throw new IllegalStateException(String.format("data file %s names partition spec %d, which %s does not have",
+                              filePath, specId, table.name()));
+               }
                FileIO fileIO = table.io();
                MetricsConfig metricsConfig = MetricsConfig.forTable(table);
 
                InputFile inputFile = fileIO.newInputFile(filePath);
                Metrics metrics = ParquetUtil.fileMetrics(inputFile, metricsConfig);
 
-               DataFiles.Builder dataFileBuilder = DataFiles.builder(table.spec())
+               DataFiles.Builder dataFileBuilder = DataFiles.builder(spec)
                          .withPath(filePath)
                          .withFormat(FileFormat.PARQUET)
                          .withFileSizeInBytes(inputFile.getLength())
                          .withMetrics(metrics);
 
                if (partitionValues != null && !partitionValues.isEmpty()) {
-                    PartitionData partitionData = partitionDataFromTypedValues(table.spec(), partitionValues);
+                    PartitionData partitionData = partitionDataFromTypedValues(spec, partitionValues);
                     dataFileBuilder.withPartition(partitionData);
                     LOGGER.debug("Thread {}: data file scoped to partition with {} values", threadId,
                               partitionValues.size());

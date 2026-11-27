@@ -1843,6 +1843,78 @@ func TestGetStreamsDelta(t *testing.T) {
 				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), DedupKeys: []string{"_kafka_key"}, UpdateType: new(string(UpdateTypeDeletionVector))}}},
 			},
 		},
+		{
+			name:            "iceberg: partition_regex change on an append_mode stream evolves in place",
+			destinationType: Iceberg,
+			oldCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,day}"}}},
+			},
+			newCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,month}/{id,bucket[8]}"}}},
+			},
+		},
+		{
+			name:            "iceberg: partition_regex change on a full_refresh stream evolves in place",
+			destinationType: Iceberg,
+			oldCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: FULLREFRESH}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), PartitionRegex: "/{created_at,day}"}}},
+			},
+			newCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: FULLREFRESH}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), PartitionRegex: ""}}},
+			},
+		},
+		{
+			name:            "iceberg: partition_regex change on an upsert stream is a delta",
+			destinationType: Iceberg,
+			oldCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), PartitionRegex: "/{created_at,day}"}}},
+			},
+			newCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), PartitionRegex: "/{created_at,month}"}}},
+			},
+			expectedDelta: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), PartitionRegex: "/{created_at,month}"}}},
+			},
+		},
+		{
+			name:            "iceberg: partition_regex and filter change on an append_mode stream is a delta",
+			destinationType: Iceberg,
+			oldCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,day}"}}},
+			},
+			newCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,month}", Filter: "id > 10"}}},
+			},
+			expectedDelta: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,month}", Filter: "id > 10"}}},
+			},
+		},
+		{
+			name:            "iceberg: switching to append_mode with a partition_regex change is a delta",
+			destinationType: Iceberg,
+			oldCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(false), PartitionRegex: "/{created_at,day}"}}},
+			},
+			newCatalog: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,month}"}}},
+			},
+			expectedDelta: &Catalog{
+				Streams:         []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public", SyncMode: CDC}}},
+				SelectedStreams: map[string][]StreamMetadata{"public": {{StreamName: "users", AppendMode: new(true), PartitionRegex: "/{created_at,month}"}}},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
