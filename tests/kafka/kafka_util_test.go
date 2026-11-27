@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"slices"
@@ -50,7 +51,21 @@ const (
 			{"name":"int_value","type":"int"},
 			{"name":"float_value","type":"float"},
 			{"name":"decimal_value","type":{"type":"bytes","logicalType":"decimal","precision":20,"scale":4}},
-			{"name":"col_excluded","type":"int"}
+			{"name":"col_excluded","type":"int"},
+			{"name":"int32_edge","type":"int"},
+			{"name":"int64_edge","type":"long"},
+			{"name":"float32_max","type":"float"},
+			{"name":"float32_tiny","type":"float"},
+			{"name":"float64_max","type":"double"},
+			{"name":"float64_tiny","type":"double"},
+			{"name":"float64_negzero","type":"double"},
+			{"name":"string_empty","type":"string"},
+			{"name":"string_special","type":"string"},
+			{"name":"union_null_int","type":["null","int"]},
+			{"name":"union_null_double","type":["null","double"]},
+			{"name":"union_val_to_null_int","type":["null","int"]},
+			{"name":"union_val_to_null_string","type":["null","string"]},
+			{"name":"union_null_stay","type":["null","string"]}
 		]
 	}`
 
@@ -70,7 +85,21 @@ const (
 			{"name":"float_value","type":"double"},
 			{"name":"decimal_value","type":{"type":"bytes","logicalType":"decimal","precision":20,"scale":4}},
 			{"name":"col_excluded","type":"int"},
-			{"name":"col_included","type":"int","default": 102}
+			{"name":"col_included","type":"int","default": 102},
+			{"name":"int32_edge","type":"int"},
+			{"name":"int64_edge","type":"long"},
+			{"name":"float32_max","type":"float"},
+			{"name":"float32_tiny","type":"float"},
+			{"name":"float64_max","type":"double"},
+			{"name":"float64_tiny","type":"double"},
+			{"name":"float64_negzero","type":"double"},
+			{"name":"string_empty","type":"string"},
+			{"name":"string_special","type":"string"},
+			{"name":"union_null_int","type":["null","int"]},
+			{"name":"union_null_double","type":["null","double"]},
+			{"name":"union_val_to_null_int","type":["null","int"]},
+			{"name":"union_val_to_null_string","type":["null","string"]},
+			{"name":"union_null_stay","type":["null","string"]}
 		]
 	}`
 )
@@ -82,61 +111,103 @@ var (
 
 	// JSON
 	jsonKey          = []byte(`{"key":"json-key"}`)
-	jsonValue        = []byte(`{"int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101}`)
-	jsonUpdatedValue = []byte(`{"int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102}`)
+	jsonValue        = []byte(`{"int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "int_edge": 9223372036854775807, "int_zero": 0, "int_over": 9223372036854775808, "float_max": 1.7976931348623157e308, "float_tiny": 5e-324, "float_negzero": -0.0, "float_prec": 0.12345678901234567, "string_empty": "", "string_special": "line1\nline2\ttab \"q\" 's' \\ back 世界🎉", "bool_val_to_null": true, "int_val_to_null": 5, "float_val_to_null": 2.5, "ts_far": "9999-12-31T23:59:59Z", "ts_offset": "2026-03-22T14:30:00+05:30", "ts_val_to_null": "2023-01-01T00:00:00Z"}`)
+	jsonUpdatedValue = []byte(`{"int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102, "int_edge": -9223372036854775808, "int_zero": -1, "int_over": 18446744073709551616, "float_max": -1.7976931348623157e308, "float_tiny": -5e-324, "float_negzero": 0.0, "float_prec": 1e-10, "string_empty": null, "string_special": "", "bool_val_to_null": null, "int_val_to_null": null, "float_val_to_null": null, "ts_far": "1969-12-31T23:59:59Z", "ts_offset": "2026-03-22T14:30:00-08:00", "ts_val_to_null": null}`)
 	jsonFilterValue  = []byte(`{"string_value": "","float_value": 99.99,"col_excluded": 101}`)
 
 	upsertKey          = []byte(`{"key":"upsert-key"}`)
 	upsertAdd          = jsonValue
 	upsertUpdate       = jsonUpdatedValue
-	upsertColumnAdd    = []byte(`{"customer_id":"c1","order_id":"o1","int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101}`)
-	upsertColumnUpdate = []byte(`{"customer_id":"c1","order_id":"o1","int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102}`)
+	upsertColumnAdd    = []byte(`{"customer_id":"c1","order_id":"o1","int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "int_edge": 9223372036854775807, "int_zero": 0, "int_over": 9223372036854775808, "float_max": 1.7976931348623157e308, "float_tiny": 5e-324, "float_negzero": -0.0, "float_prec": 0.12345678901234567, "string_empty": "", "string_special": "line1\nline2\ttab \"q\" 's' \\ back 世界🎉", "bool_val_to_null": true, "int_val_to_null": 5, "float_val_to_null": 2.5, "ts_far": "9999-12-31T23:59:59Z", "ts_offset": "2026-03-22T14:30:00+05:30", "ts_val_to_null": "2023-01-01T00:00:00Z"}`)
+	upsertColumnUpdate = []byte(`{"customer_id":"c1","order_id":"o1","int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102, "int_edge": -9223372036854775808, "int_zero": -1, "int_over": 18446744073709551616, "float_max": -1.7976931348623157e308, "float_tiny": -5e-324, "float_negzero": 0.0, "float_prec": 1e-10, "string_empty": null, "string_special": "", "bool_val_to_null": null, "int_val_to_null": null, "float_val_to_null": null, "ts_far": "1969-12-31T23:59:59Z", "ts_offset": "2026-03-22T14:30:00-08:00", "ts_val_to_null": null}`)
 	upsertOutOfFilter  = []byte(`{"int_value": 100,"float_value": 150.0,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102}`)
-	upsertRepartition  = []byte(`{"int_value": 200,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102}`)
+	upsertRepartition  = []byte(`{"int_value": 200,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "col_included": 102, "int_edge": -9223372036854775808, "int_zero": -1, "int_over": 18446744073709551616, "float_max": -1.7976931348623157e308, "float_tiny": -5e-324, "float_negzero": 0.0, "float_prec": 1e-10, "string_empty": null, "string_special": "", "bool_val_to_null": null, "int_val_to_null": null, "float_val_to_null": null, "ts_far": "1969-12-31T23:59:59Z", "ts_offset": "2026-03-22T14:30:00-08:00", "ts_val_to_null": null}`)
 
 	// Avro
 	avroKey   = []byte(`{"key":"avro-key"}`)
 	avroValue = map[string]interface{}{
-		"int32_value":     int32(132),
-		"int64_value":     int64(6400000000),
-		"float32_value":   float32(32.5),
-		"float64_value":   float64(64.6464),
-		"boolean":         true,
-		"timestamp_value": int64(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
-		"string_value":    "test_string",
-		"int_value":       int32(100),
-		"float_value":     float32(64.6464),
-		"decimal_value":   big.NewRat(123456789012345678, 10_000),
-		"col_excluded":    int32(101),
+		"int32_value":              int32(132),
+		"int64_value":              int64(6400000000),
+		"float32_value":            float32(32.5),
+		"float64_value":            float64(64.6464),
+		"boolean":                  true,
+		"timestamp_value":          int64(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
+		"string_value":             "test_string",
+		"int_value":                int32(100),
+		"float_value":              float32(64.6464),
+		"decimal_value":            big.NewRat(123456789012345678, 10_000),
+		"col_excluded":             int32(101),
+		"int32_edge":               int32(-2147483648),
+		"int64_edge":               int64(-9223372036854775808),
+		"float32_max":              float32(math.MaxFloat32),
+		"float32_tiny":             float32(1.4e-45),
+		"float64_max":              float64(1.7976931348623157e308),
+		"float64_tiny":             float64(5e-324),
+		"float64_negzero":          math.Copysign(0, -1),
+		"string_empty":             "",
+		"string_special":           "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
+		"union_null_int":           nil,
+		"union_null_double":        nil,
+		"union_val_to_null_int":    map[string]interface{}{"int": int32(5)},
+		"union_val_to_null_string": map[string]interface{}{"string": "x"},
+		"union_null_stay":          nil,
 	}
 
 	avroFilterValue = map[string]interface{}{
-		"int32_value":     int32(132),
-		"int64_value":     int64(6400000000),
-		"float32_value":   float32(32.5),
-		"float64_value":   float64(64.6464),
-		"boolean":         true,
-		"timestamp_value": int64(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
-		"string_value":    "",
-		"int_value":       int32(100),
-		"float_value":     float32(64.6464),
-		"decimal_value":   big.NewRat(123456789012345678, 10_000),
-		"col_excluded":    int32(101),
+		"int32_value":              int32(132),
+		"int64_value":              int64(6400000000),
+		"float32_value":            float32(32.5),
+		"float64_value":            float64(64.6464),
+		"boolean":                  true,
+		"timestamp_value":          int64(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
+		"string_value":             "",
+		"int_value":                int32(100),
+		"float_value":              float32(64.6464),
+		"decimal_value":            big.NewRat(123456789012345678, 10_000),
+		"col_excluded":             int32(101),
+		"int32_edge":               int32(-2147483648),
+		"int64_edge":               int64(-9223372036854775808),
+		"float32_max":              float32(math.MaxFloat32),
+		"float32_tiny":             float32(1.4e-45),
+		"float64_max":              float64(1.7976931348623157e308),
+		"float64_tiny":             float64(5e-324),
+		"float64_negzero":          math.Copysign(0, -1),
+		"string_empty":             "",
+		"string_special":           "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
+		"union_null_int":           nil,
+		"union_null_double":        nil,
+		"union_val_to_null_int":    map[string]interface{}{"int": int32(5)},
+		"union_val_to_null_string": map[string]interface{}{"string": "x"},
+		"union_null_stay":          nil,
 	}
 
 	avroUpdatedValue = map[string]interface{}{
-		"int32_value":     int32(132),
-		"int64_value":     int64(6400000000),
-		"float32_value":   float32(32.5),
-		"float64_value":   float64(64.6464),
-		"boolean":         true,
-		"timestamp_value": int64(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
-		"string_value":    "test_string",
-		"int_value":       int64(100),
-		"float_value":     float64(64.6464),
-		"decimal_value":   big.NewRat(-987654321098765432, 10_000),
-		"col_excluded":    int32(101),
-		"col_included":    int32(102),
+		"int32_value":              int32(132),
+		"int64_value":              int64(6400000000),
+		"float32_value":            float32(32.5),
+		"float64_value":            float64(64.6464),
+		"boolean":                  true,
+		"timestamp_value":          int64(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
+		"string_value":             "test_string",
+		"int_value":                int64(100),
+		"float_value":              float64(64.6464),
+		"decimal_value":            big.NewRat(-987654321098765432, 10_000),
+		"col_excluded":             int32(101),
+		"col_included":             int32(102),
+		"int32_edge":               int32(2147483647),
+		"int64_edge":               int64(9223372036854775807),
+		"float32_max":              float32(-math.MaxFloat32),
+		"float32_tiny":             float32(-1.4e-45),
+		"float64_max":              float64(-1.7976931348623157e308),
+		"float64_tiny":             float64(-5e-324),
+		"float64_negzero":          float64(0),
+		"string_empty":             "x",
+		"string_special":           "",
+		"union_null_int":           map[string]interface{}{"int": int32(5)},
+		"union_null_double":        map[string]interface{}{"double": float64(1.5)},
+		"union_val_to_null_int":    nil,
+		"union_val_to_null_string": nil,
+		"union_null_stay":          nil,
 	}
 )
 
@@ -240,7 +311,7 @@ func ExecuteQueryJSON(ctx context.Context, t *testing.T, conf *testutils.TestCon
 	case "upsert_empty":
 		writeMessagesWithRetry(ctx, t, client, &kgo.Record{
 			Key:       upsertKey,
-			Value:     []byte(`{"customer_id":"","int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101}`),
+			Value:     []byte(`{"customer_id":"","int_value": 100,"float_value": 99.99,"boolean": true,"timestamp_value": "2026-03-22T14:30:00Z","timestamp_micro_value": "2026-03-22T14:30:00.573605Z","string_value": "test_string", "col_excluded": 101, "int_edge": 9223372036854775807, "int_zero": 0, "int_over": 9223372036854775808, "float_max": 1.7976931348623157e308, "float_tiny": 5e-324, "float_negzero": -0.0, "float_prec": 0.12345678901234567, "string_empty": "", "string_special": "line1\nline2\ttab \"q\" 's' \\ back 世界🎉", "bool_val_to_null": true, "int_val_to_null": 5, "float_val_to_null": 2.5, "ts_far": "9999-12-31T23:59:59Z", "ts_offset": "2026-03-22T14:30:00+05:30", "ts_val_to_null": "2023-01-01T00:00:00Z"}`),
 			Partition: 0,
 		})
 		t.Logf("Added 1 message to topic '%s' on partition %d", topic, 0)
@@ -644,6 +715,21 @@ var ExpectedKafkaJSONData = map[string]interface{}{
 	"timestamp_value":       arrow.Timestamp(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
 	"timestamp_micro_value": arrow.Timestamp(time.Date(2026, 3, 22, 14, 30, 0, 573605000, time.UTC).UnixNano() / int64(time.Microsecond)),
 	"string_value":          "test_string",
+	"int_edge":              int64(9223372036854775807),
+	"int_zero":              int64(0),
+	"int_over":              float64(9223372036854775808),
+	"float_max":             float64(1.7976931348623157e308),
+	"float_tiny":            float64(5e-324),
+	"float_negzero":         float64(0),
+	"float_prec":            float64(0.12345678901234567),
+	"string_empty":          "",
+	"string_special":        "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
+	"bool_val_to_null":      true,
+	"int_val_to_null":       int64(5),
+	"float_val_to_null":     float64(2.5),
+	"ts_far":                arrow.Timestamp(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMicro()),
+	"ts_offset":             arrow.Timestamp(time.Date(2026, 3, 22, 9, 0, 0, 0, time.UTC).UnixMicro()),
+	"ts_val_to_null":        arrow.Timestamp(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro()),
 }
 
 var KafkaToDestinationJSONSchema = map[string]string{
@@ -653,6 +739,21 @@ var KafkaToDestinationJSONSchema = map[string]string{
 	"timestamp_value":       "timestamp",
 	"timestamp_micro_value": "timestamp",
 	"string_value":          "string",
+	"int_edge":              "bigint",
+	"int_zero":              "bigint",
+	"int_over":              "double",
+	"float_max":             "double",
+	"float_tiny":            "double",
+	"float_negzero":         "double",
+	"float_prec":            "double",
+	"string_empty":          "string",
+	"string_special":        "string",
+	"bool_val_to_null":      "boolean",
+	"int_val_to_null":       "bigint",
+	"float_val_to_null":     "double",
+	"ts_far":                "timestamp",
+	"ts_offset":             "timestamp",
+	"ts_val_to_null":        "timestamp",
 }
 
 var ExpectedKafkaUpdatedJSONData = map[string]interface{}{
@@ -663,6 +764,21 @@ var ExpectedKafkaUpdatedJSONData = map[string]interface{}{
 	"timestamp_micro_value": arrow.Timestamp(time.Date(2026, 3, 22, 14, 30, 0, 573605000, time.UTC).UnixNano() / int64(time.Microsecond)),
 	"string_value":          "test_string",
 	"col_included":          int64(102),
+	"int_edge":              int64(-9223372036854775808),
+	"int_zero":              int64(-1),
+	"int_over":              float64(18446744073709551616),
+	"float_max":             float64(-1.7976931348623157e308),
+	"float_tiny":            float64(-5e-324),
+	"float_negzero":         float64(0),
+	"float_prec":            float64(1e-10),
+	"string_empty":          nil,
+	"string_special":        "",
+	"bool_val_to_null":      nil,
+	"int_val_to_null":       nil,
+	"float_val_to_null":     nil,
+	"ts_far":                arrow.Timestamp(time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC).UnixMicro()),
+	"ts_offset":             arrow.Timestamp(time.Date(2026, 3, 22, 22, 30, 0, 0, time.UTC).UnixMicro()),
+	"ts_val_to_null":        nil,
 }
 
 var ExpectedKafkaRepartitionJSONData = map[string]interface{}{
@@ -673,6 +789,21 @@ var ExpectedKafkaRepartitionJSONData = map[string]interface{}{
 	"timestamp_micro_value": arrow.Timestamp(time.Date(2026, 3, 22, 14, 30, 0, 573605000, time.UTC).UnixNano() / int64(time.Microsecond)),
 	"string_value":          "test_string",
 	"col_included":          int64(102),
+	"int_edge":              int64(-9223372036854775808),
+	"int_zero":              int64(-1),
+	"int_over":              float64(18446744073709551616),
+	"float_max":             float64(-1.7976931348623157e308),
+	"float_tiny":            float64(-5e-324),
+	"float_negzero":         float64(0),
+	"float_prec":            float64(1e-10),
+	"string_empty":          nil,
+	"string_special":        "",
+	"bool_val_to_null":      nil,
+	"int_val_to_null":       nil,
+	"float_val_to_null":     nil,
+	"ts_far":                arrow.Timestamp(time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC).UnixMicro()),
+	"ts_offset":             arrow.Timestamp(time.Date(2026, 3, 22, 22, 30, 0, 0, time.UTC).UnixMicro()),
+	"ts_val_to_null":        nil,
 }
 
 var UpdatedKafkaToDestinationJSONSchema = map[string]string{
@@ -683,6 +814,21 @@ var UpdatedKafkaToDestinationJSONSchema = map[string]string{
 	"timestamp_micro_value": "timestamp",
 	"string_value":          "string",
 	"col_included":          "bigint",
+	"int_edge":              "bigint",
+	"int_zero":              "bigint",
+	"int_over":              "double",
+	"float_max":             "double",
+	"float_tiny":            "double",
+	"float_negzero":         "double",
+	"float_prec":            "double",
+	"string_empty":          "string",
+	"string_special":        "string",
+	"bool_val_to_null":      "boolean",
+	"int_val_to_null":       "bigint",
+	"float_val_to_null":     "double",
+	"ts_far":                "timestamp",
+	"ts_offset":             "timestamp",
+	"ts_val_to_null":        "timestamp",
 }
 
 // AVRO data format resources
@@ -697,48 +843,104 @@ var ExpectedKafkaAvroData = map[string]interface{}{
 	"int_value":       int32(100),
 	"float_value":     float32(64.6464),
 	// an avro decimal lands as a double, so its 18 digits round
-	"decimal_value": float64(12345678901234.5678),
+	"decimal_value":            float64(12345678901234.5678),
+	"int32_edge":               int32(-2147483648),
+	"int64_edge":               int64(-9223372036854775808),
+	"float32_max":              float32(math.MaxFloat32),
+	"float32_tiny":             float32(1.4e-45),
+	"float64_max":              float64(1.7976931348623157e308),
+	"float64_tiny":             float64(5e-324),
+	"float64_negzero":          float64(0),
+	"string_empty":             "",
+	"string_special":           "line1\nline2\ttab \"q\" 's' \\ back 世界🎉",
+	"union_null_int":           nil,
+	"union_null_double":        nil,
+	"union_val_to_null_int":    int32(5),
+	"union_val_to_null_string": "x",
+	"union_null_stay":          nil,
 }
 
 var ExpectedKafkaUpdatedAvroData = map[string]interface{}{
-	"int32_value":     int32(132),
-	"int64_value":     int64(6400000000),
-	"float32_value":   float32(32.5),
-	"float64_value":   float64(64.6464),
-	"boolean":         true,
-	"timestamp_value": arrow.Timestamp(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
-	"string_value":    "test_string",
-	"int_value":       int64(100),       // promoted from int → long
-	"float_value":     float64(64.6464), // promoted from float → double
-	"decimal_value":   float64(-98765432109876.5432),
-	"col_included":    int32(102), // new field
+	"int32_value":              int32(132),
+	"int64_value":              int64(6400000000),
+	"float32_value":            float32(32.5),
+	"float64_value":            float64(64.6464),
+	"boolean":                  true,
+	"timestamp_value":          arrow.Timestamp(time.Date(2026, 3, 22, 14, 30, 0, 0, time.UTC).UnixNano() / int64(time.Microsecond)),
+	"string_value":             "test_string",
+	"int_value":                int64(100),       // promoted from int → long
+	"float_value":              float64(64.6464), // promoted from float → double
+	"decimal_value":            float64(-98765432109876.5432),
+	"col_included":             int32(102), // new field
+	"int32_edge":               int32(2147483647),
+	"int64_edge":               int64(9223372036854775807),
+	"float32_max":              float32(-math.MaxFloat32),
+	"float32_tiny":             float32(-1.4e-45),
+	"float64_max":              float64(-1.7976931348623157e308),
+	"float64_tiny":             float64(-5e-324),
+	"float64_negzero":          float64(0),
+	"string_empty":             "x",
+	"string_special":           "",
+	"union_null_int":           int32(5),
+	"union_null_double":        float64(1.5),
+	"union_val_to_null_int":    nil,
+	"union_val_to_null_string": nil,
+	"union_null_stay":          nil,
 }
 
 var KafkaToDestinationAvroSchema = map[string]string{
-	"int32_value":     "int",
-	"int64_value":     "bigint",
-	"float32_value":   "float",
-	"float64_value":   "double",
-	"boolean":         "boolean",
-	"timestamp_value": "timestamp",
-	"int_value":       "int",
-	"float_value":     "float",
-	"decimal_value":   "double",
-	"string_value":    "string",
+	"int32_value":              "int",
+	"int64_value":              "bigint",
+	"float32_value":            "float",
+	"float64_value":            "double",
+	"boolean":                  "boolean",
+	"timestamp_value":          "timestamp",
+	"int_value":                "int",
+	"float_value":              "float",
+	"decimal_value":            "double",
+	"string_value":             "string",
+	"int32_edge":               "int",
+	"int64_edge":               "bigint",
+	"float32_max":              "float",
+	"float32_tiny":             "float",
+	"float64_max":              "double",
+	"float64_tiny":             "double",
+	"float64_negzero":          "double",
+	"string_empty":             "string",
+	"string_special":           "string",
+	"union_null_int":           "int",
+	"union_null_double":        "double",
+	"union_val_to_null_int":    "int",
+	"union_val_to_null_string": "string",
+	"union_null_stay":          "string",
 }
 
 var UpdatedKafkaToDestinationAvroSchema = map[string]string{
-	"int32_value":     "int",
-	"int64_value":     "bigint",
-	"float32_value":   "float",
-	"float64_value":   "double",
-	"boolean":         "boolean",
-	"timestamp_value": "timestamp",
-	"string_value":    "string",
-	"int_value":       "bigint",
-	"float_value":     "double",
-	"decimal_value":   "double",
-	"col_included":    "int",
+	"int32_value":              "int",
+	"int64_value":              "bigint",
+	"float32_value":            "float",
+	"float64_value":            "double",
+	"boolean":                  "boolean",
+	"timestamp_value":          "timestamp",
+	"string_value":             "string",
+	"int_value":                "bigint",
+	"float_value":              "double",
+	"decimal_value":            "double",
+	"col_included":             "int",
+	"int32_edge":               "int",
+	"int64_edge":               "bigint",
+	"float32_max":              "float",
+	"float32_tiny":             "float",
+	"float64_max":              "double",
+	"float64_tiny":             "double",
+	"float64_negzero":          "double",
+	"string_empty":             "string",
+	"string_special":           "string",
+	"union_null_int":           "int",
+	"union_null_double":        "double",
+	"union_val_to_null_int":    "int",
+	"union_val_to_null_string": "string",
+	"union_null_stay":          "string",
 }
 
 var ExpectedKafkaDefaultCDCColumnsSchema = map[string]string{
