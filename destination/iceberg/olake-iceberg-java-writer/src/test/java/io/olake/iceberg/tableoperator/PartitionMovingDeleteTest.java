@@ -1,7 +1,6 @@
 package io.olake.iceberg.tableoperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -16,13 +15,18 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.AppendFiles;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DeleteFile;
+import org.apache.iceberg.FileContent;
+import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.RowDelta;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.IcebergGenerics;
 import org.apache.iceberg.data.Record;
+import org.apache.iceberg.deletes.EqualityDeleteWriter;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.hadoop.HadoopTables;
@@ -36,14 +40,17 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import io.olake.iceberg.IcebergUtil;
 import io.olake.iceberg.rpc.RecordIngest.ArrowPayload;
+import io.olake.iceberg.tableIndex.EqualityDeleteMigrator;
 
 /**
  * An update that moves a row to another partition supersedes a row in a data file of the
  * OLD partition. Iceberg scopes deletes to a partition, so the delete has to carry the old
  * file's partition: stamped with the new row's, readers that filter on the partition column
  * still see the old row, a delete file spanning several data files misses it on every read,
- * and Iceberg 1.12+ refuses the table.
+ * and Iceberg 1.12+ refuses the table. The same holds for the partition SPEC of a file written
+ * before the table's spec was evolved.
  */
 class PartitionMovingDeleteTest {
     private static final Schema SCHEMA = new Schema(List.of(
@@ -117,18 +124,71 @@ class PartitionMovingDeleteTest {
         assertEquals(List.of("1/us", "3/us"), read(table, Expressions.alwaysTrue()));
     }
 
-    @Test
-    @DisplayName("a delete into a file written under an older partition spec fails instead of corrupting the table")
-    void refusesFilesOfAnOlderSpec() throws Exception {
-        Table table = newTable(DeleteMode.POSITION);
-        String euFile = commitRows(table, DeleteMode.POSITION, row("1", "a", "eu"));
-        table.updateSpec().addField("payload").commit();
+    // a spec evolved outside OLake: rows still in files of the old spec are deleted under that
+    // spec, whether the update moves them (1) or not (2)
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(value = DeleteMode.class, names = {"POSITION", "DELETION_VECTOR"})
+    @DisplayName("a row in a file of an older partition spec is deleted under that file's spec")
+    void deletesUnderTheOlderSpecOfTheFile(DeleteMode mode) throws Exception {
+        Table table = newTable(mode);
+        String euFile = commitRows(table, mode, row("1", "a", "eu"), row("2", "b", "eu"));
+        int oldSpec = table.spec().specId();
+        table.updateSpec().addField(Expressions.bucket("_olake_id", 2)).commit();
 
-        PositionalDeltaWriter writer = newWriter(table, DeleteMode.POSITION, new DataFilePartitions(table));
-        IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> writer.write(update("1", "a2", "us", euFile, 0)));
-        assertEquals(true, failure.getMessage().contains("partition spec"), failure.getMessage());
-        writer.abort();
+        PositionalDeltaWriter writer = newWriter(table, mode, new DataFilePartitions(table));
+        writer.write(update("1", "a2", "us", euFile, 0));
+        writer.write(update("2", "b2", "eu", euFile, 1));
+        WriteResult result = writer.complete();
+
+        assertEquals(List.of(oldSpec + ":region=eu"), specsAndPartitions(table, result.deleteFiles()));
+        commit(table, result);
+        assertEquals(List.of("1/us", "2/eu"), read(table, Expressions.alwaysTrue()));
+        assertEquals(List.of("2/eu"), read(table, Expressions.equal("region", "eu")));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(value = DeleteMode.class, names = {"POSITION", "DELETION_VECTOR"})
+    @DisplayName("a table evolved to unpartitioned still deletes into its partitioned files under their spec")
+    void deletesIntoPartitionedFilesOfATableNowUnpartitioned(DeleteMode mode) throws Exception {
+        Table table = newTable(mode);
+        String euFile = commitRows(table, mode, row("1", "a", "eu"), row("2", "b", "eu"));
+        int oldSpec = table.spec().specId();
+        table.updateSpec().removeField("region").commit();
+
+        PositionalDeltaWriter writer = newWriter(table, mode, new DataFilePartitions(table));
+        writer.write(update("1", "a2", "us", euFile, 0));
+        WriteResult result = writer.complete();
+
+        assertEquals(List.of(oldSpec + ":region=eu"), specsAndPartitions(table, result.deleteFiles()));
+        commit(table, result);
+        assertEquals(List.of("1/us", "2/eu"), read(table, Expressions.alwaysTrue()));
+        assertEquals(List.of("2/eu"), read(table, Expressions.equal("region", "eu")));
+    }
+
+    // eq -> pos/dv migration of a table whose spec was evolved after the equality delete's data file
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(value = DeleteMode.class, names = {"POSITION", "DELETION_VECTOR"})
+    @DisplayName("migrating equality deletes keeps each data file's own spec")
+    void migratesEqualityDeletesUnderTheFilesSpec(DeleteMode mode) throws Exception {
+        Table table = newTable(mode);
+        String euFile = commitRows(table, mode, row("1", "a", "eu"), row("2", "b", "eu"));
+        PartitionSpec oldSpec = table.spec();
+        StructLike eu = partitionOf(table, euFile);
+        table.newRowDelta().addDeletes(equalityDelete(table, oldSpec, eu, "1")).commit();
+        table.updateSpec().addField(Expressions.bucket("_olake_id", 2)).commit();
+
+        EqualityDeleteMigrator.migrate(table, "_olake_id",
+                IcebergUtil.getTableOutputFileFactory(table, FileFormat.PARQUET), mode);
+
+        table.refresh();
+        List<DeleteFile> deletes = new ArrayList<>();
+        try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
+            tasks.forEach(task -> deletes.addAll(task.deletes()));
+        }
+        assertEquals(List.of(oldSpec.specId() + ":region=eu"), specsAndPartitions(table, deletes.toArray(DeleteFile[]::new)));
+        assertEquals(FileContent.POSITION_DELETES, deletes.get(0).content());
+        assertEquals(List.of("2/eu"), read(table, Expressions.alwaysTrue()));
+        assertEquals(List.of("2/eu"), read(table, Expressions.equal("region", "eu")));
     }
 
     // the arrow path: the caller streams positions with the partition it is writing; the
@@ -190,6 +250,36 @@ class PartitionMovingDeleteTest {
         Arrays.stream(result.deleteFiles()).forEach(delta::addDeletes);
         Arrays.stream(result.rewrittenDeleteFiles()).forEach(delta::removeDeletes);
         delta.commit();
+    }
+
+    private static List<String> specsAndPartitions(Table table, DeleteFile[] deletes) {
+        return Arrays.stream(deletes)
+                .map(file -> file.specId() + ":" + table.specs().get(file.specId()).partitionToPath(file.partition()))
+                .distinct().sorted().toList();
+    }
+
+    private static StructLike partitionOf(Table table, String path) throws Exception {
+        try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
+            for (FileScanTask task : tasks) {
+                if (task.file().location().equals(path)) {
+                    return task.file().copyWithoutStats().partition();
+                }
+            }
+        }
+        throw new IllegalStateException("not in table: " + path);
+    }
+
+    private static DeleteFile equalityDelete(Table table, PartitionSpec spec, StructLike partition, String id) throws Exception {
+        Schema keySchema = table.schema().select("_olake_id");
+        EqualityDeleteWriter<Record> writer = IcebergUtil.getTableAppender(table, spec).newEqDeleteWriter(
+                IcebergUtil.getTableOutputFileFactory(table, FileFormat.PARQUET).newOutputFile(spec, partition),
+                FileFormat.PARQUET, partition);
+        GenericRecord key = GenericRecord.create(keySchema);
+        key.setField("_olake_id", id);
+        try (writer) {
+            writer.write(key);
+        }
+        return writer.toDeleteFile();
     }
 
     private static List<String> partitions(Table table, DeleteFile[] deletes) {

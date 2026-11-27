@@ -123,7 +123,12 @@ public class IcebergTableWriterFactory {
       return new PositionalDeleteSink.DeletionVectors(
           dvFileFactory, new io.olake.iceberg.tableIndex.PreviousDeleteLoader(icebergTable));
     }
-    return new PositionalDeleteSink.PositionalFiles(format, appenderFactory, fileFactory, DELETE_GRANULARITY);
+    // the table's own appender for its current spec; one built per older spec a delete may reach into
+    return new PositionalDeleteSink.PositionalFiles(format,
+        spec -> spec.specId() == icebergTable.spec().specId()
+            ? appenderFactory
+            : IcebergUtil.getTableAppender(icebergTable, spec),
+        fileFactory, DELETE_GRANULARITY);
   }
 
 }

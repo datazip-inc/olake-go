@@ -28,10 +28,11 @@ import io.olake.iceberg.tableIndex.PreviousDeleteLoader;
  * roaring bitmaps inside {@code BaseDVFileWriter}, so a sync's whole delete set stays
  * small in memory regardless of how many batches arrive.
  *
- * <p>Partitions are read against {@code table.spec()} throughout, as in
- * {@code EqualityDeleteMigrator}: a table OLake owns carries a single spec, since a
- * partition change is a stream delta and such streams are dropped and rebuilt rather
- * than evolved in place. Tables repartitioned outside OLake are not supported.
+ * <p>The partition values the caller sends are read against {@code table.spec()}: OLake
+ * itself never evolves a table's spec, since a partition change is a stream delta and such
+ * streams are dropped and rebuilt. A table repartitioned outside OLake still gets correct
+ * vectors for its committed files, which take their own spec and partition from the
+ * manifests (see {@link DataFilePartitions}).
  *
  * <p>One instance per session, created on the first batch. Not thread-safe; a session
  * is driven by a single caller thread, like every other writer-scoped object here.
@@ -65,28 +66,28 @@ public final class ArrowDeletionVectorWriter {
   /**
    * Folds one batch of positions into the vectors being built.
    *
-   * <p>Each vector is stamped with the partition of the data file it REFERENCES, which
-   * differs from the one being written when an update moves a row between partitions:
-   * a vector stamped with the new partition is pruned by partition-filtered scans, so
-   * the old row reappears, and Iceberg 1.12+ readers reject the table. A committed
-   * file's partition is read from the table's manifests; a file the caller uploaded this
-   * sync is not listed in any yet, and for those the caller sends its partition.
+   * <p>Each vector is stamped with the spec and partition of the data file it REFERENCES,
+   * which differ from the ones being written when an update moves a row between partitions
+   * or the row sits in a file written before the partition spec was evolved: a vector
+   * stamped otherwise is pruned by partition-filtered scans, so the old row reappears, and
+   * Iceberg 1.12+ readers reject the table. A committed file's spec and partition are read
+   * from the table's manifests; a file the caller uploaded this sync is not listed in any
+   * yet, and for those the caller sends its partition.
    */
   public void add(ArrowPayload.DeletionVectorBatch batch, IcebergTableOperator operator) {
     PartitionSpec spec = table.spec();
     for (ArrowPayload.DeletionVectorBatch.Entry entry : batch.getEntriesList()) {
       String dataFilePath = entry.getDataFilePath();
-      // Iceberg rejects a non-null partition on an unpartitioned spec, and vice versa.
-      StructLike partition = null;
-      if (!spec.isUnpartitioned()) {
-        partition = dataFilePartitions.partitionOf(dataFilePath);
-        if (partition == null) {
-          partition = operator.partitionDataFromTypedValues(spec, entry.getPartitionValuesList());
-        }
+      DataFilePartitions.Located located = dataFilePartitions.locate(dataFilePath);
+      if (located == null) {
+        // Iceberg rejects a non-null partition on an unpartitioned spec, and vice versa.
+        located = new DataFilePartitions.Located(spec, spec.isUnpartitioned()
+            ? null
+            : operator.partitionDataFromTypedValues(spec, entry.getPartitionValuesList()));
       }
 
       for (long position : entry.getPositionsList()) {
-        writer.delete(dataFilePath, position, spec, partition);
+        writer.delete(dataFilePath, position, located.spec(), located.partition());
         positions++;
       }
     }

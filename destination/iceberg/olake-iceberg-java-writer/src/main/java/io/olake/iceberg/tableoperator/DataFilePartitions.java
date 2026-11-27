@@ -11,6 +11,7 @@ import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.ManifestReader;
 import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionKey;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
@@ -19,17 +20,19 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
 /**
- * Which partition a data file lives in, so the positional delete or deletion vector that
- * supersedes one of its rows can be stamped with it.
+ * Which partition spec and partition a data file lives in, so the positional delete or
+ * deletion vector that supersedes one of its rows can be stamped with them.
  *
  * <p>Iceberg scopes a delete to a partition: a reader applies it only to data files of the
  * same spec and partition tuple, and a partition-filtered scan prunes delete manifests by
- * it. A delete therefore has to carry the partition of the data file it REFERENCES, which
- * is not the partition being written whenever an update moves a row between partitions.
- * Stamped with the new row's partition instead, the old copy stays visible - on every read
- * for a delete file addressing several data files, under a partition filter for a
- * file-scoped one or a deletion vector - and Iceberg 1.12+ readers refuse the table with
- * "Mismatched partition tuples ... metadata is corrupted".
+ * it. A delete therefore has to carry the spec and partition of the data file it
+ * REFERENCES. That is not the partition being written whenever an update moves a row
+ * between partitions, nor the spec being written for any row still in a file written
+ * before the table's partition spec was evolved. Stamped with the row being written
+ * instead, the old copy stays visible - on every read for a delete file addressing several
+ * data files, under a partition filter for a file-scoped one or a deletion vector - and
+ * Iceberg 1.12+ readers refuse the table with "Mismatched partition tuples|specs ...
+ * metadata is corrupted".
  *
  * <p>The partition comes from manifest metadata, never from the file path. A path need not
  * encode it at all ({@code write.object-storage.partitioned-paths=false}, a custom
@@ -62,9 +65,9 @@ public final class DataFilePartitions {
    * committed. Only the first call for a path does any work, so writers may call this for
    * every row.
    */
-  public void recordWritten(String path, StructLike partition) {
+  public void recordWritten(String path, PartitionSpec spec, StructLike partition) {
     if (!known.containsKey(path)) {
-      known.put(path, new Located(table.spec().specId(), copy(partition)));
+      known.put(path, new Located(spec, copy(partition)));
     }
   }
 
@@ -80,14 +83,16 @@ public final class DataFilePartitions {
   }
 
   /**
-   * The partition of the data file at {@code path}, or null when no manifest lists it:
-   * either a file the caller wrote this sync and knows the partition of, or one the table
-   * does not hold, which a delete matches nothing in whatever partition it carries.
-   *
-   * @throws IllegalStateException when the file was written under a partition spec other
-   *     than the table's current one: deletes are only written against the current spec.
+   * The spec and partition of the data file at {@code path}, or null when no manifest lists
+   * it: either a file the caller wrote this sync and knows the partition of, or one the
+   * table does not hold, which a delete matches nothing in whatever partition it carries.
    */
-  public StructLike partitionOf(String path) {
+  public Located locate(String path) {
+    if (table.specs().size() == 1 && table.spec().isUnpartitioned()) {
+      // every file the table ever held is unpartitioned: nothing to look up
+      return new Located(table.spec(), null);
+    }
+
     Located located = known.get(path);
     if (located == null && !uncommitted.contains(path) && !absent.contains(path)) {
       readNewManifests();
@@ -96,18 +101,7 @@ public final class DataFilePartitions {
         absent.add(path);
       }
     }
-    if (located == null) {
-      return null;
-    }
-
-    int currentSpecId = table.spec().specId();
-    if (located.specId != currentSpecId) {
-      throw new IllegalStateException(String.format(
-          "data file %s of table %s was written under partition spec %d, but the table now writes spec %d; "
-              + "positional deletes across a partition spec change are not supported, drop and resync the stream",
-          path, table.name(), located.specId, currentSpecId));
-    }
-    return located.partition;
+    return located;
   }
 
   private void readNewManifests() {
@@ -123,10 +117,12 @@ public final class DataFilePartitions {
       if (!readManifests.add(manifest.path())) {
         continue;
       }
-      try (ManifestReader<DataFile> reader = ManifestFiles.read(manifest, table.io(), table.specs())) {
+      Map<Integer, PartitionSpec> specs = table.specs();
+      try (ManifestReader<DataFile> reader = ManifestFiles.read(manifest, table.io(), specs)) {
         for (DataFile file : reader) {
           // the reader reuses its containers, so the partition is copied before it is kept
-          known.putIfAbsent(file.location(), new Located(file.specId(), copy(file.partition())));
+          PartitionSpec spec = specs.get(file.specId());
+          known.putIfAbsent(file.location(), new Located(spec, spec.isUnpartitioned() ? null : copy(file.partition())));
         }
       } catch (IOException e) {
         throw new UncheckedIOException("failed to read manifest " + manifest.path() + " of " + table.name(), e);
@@ -144,6 +140,7 @@ public final class DataFilePartitions {
     return partition;
   }
 
-  private record Located(int specId, StructLike partition) {
+  /** Where a data file lives. The partition is null under an unpartitioned spec, as Iceberg requires. */
+  public record Located(PartitionSpec spec, StructLike partition) {
   }
 }

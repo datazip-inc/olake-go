@@ -123,8 +123,8 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
     StructLike partition = partitionOrNull(key);
 
     if (wrapped.hasPositionalDelete()) {
-      String supersededPath = wrapped.deleteFilePath();
-      deleteSink.delete(supersededPath, wrapped.deletePosition(), spec, referencedPartition(supersededPath, partition));
+      DataFilePartitions.Located superseded = referencedFile(wrapped.deleteFilePath(), partition);
+      deleteSink.delete(wrapped.deleteFilePath(), wrapped.deletePosition(), superseded.spec(), superseded.partition());
     }
 
     Object identifier = identifierOf(row);
@@ -214,17 +214,16 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
   }
 
   /**
-   * Partition to stamp on the delete of a row in the data file at path: the one that file
-   * lives in, not the one being written. They differ when an update moves a row between
-   * partitions, and a delete stamped with the wrong one never reaches the old row.
+   * Spec and partition to stamp on the delete of a row in the data file at path: the ones
+   * that file lives in, not the ones being written. The partition differs when an update
+   * moves a row between partitions, the spec for any row still in a file written before
+   * the table's partition spec was evolved; either way a delete stamped with the row being
+   * written never reaches the old row.
    */
-  private StructLike referencedPartition(String path, StructLike writing) {
-    if (spec.isUnpartitioned()) {
-      return null;
-    }
-    StructLike located = dataFilePartitions.partitionOf(path);
+  private DataFilePartitions.Located referencedFile(String path, StructLike writing) {
+    DataFilePartitions.Located located = dataFilePartitions.locate(path);
     // a path the table does not hold matches no data file, whatever partition it carries
-    return located != null ? located : writing;
+    return located != null ? located : new DataFilePartitions.Located(spec, writing);
   }
 
   /**
@@ -232,9 +231,7 @@ public class PositionalDeltaWriter extends BaseTaskWriter<Record> implements Pos
    * of this session can supersede the row before any manifest lists the file.
    */
   private void recordLanding(String path, PartitionKey key) {
-    if (!spec.isUnpartitioned()) {
-      dataFilePartitions.recordWritten(path, key);
-    }
+    dataFilePartitions.recordWritten(path, spec, partitionOrNull(key));
   }
 
   private void supersedePrevious(Object identifier) throws IOException {
