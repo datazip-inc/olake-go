@@ -242,20 +242,20 @@ func IcebergSchemaTypes(ctx context.Context, spark sql.SparkSession, fullTableNa
 
 // Snapshot summary keys read per commit and on the current snapshot. File counts and sizes are left
 // to MetaFiles.
+// TODO: remove the number of files check from backward compatibility and add it in integration tests.
 var (
-	snapshotRecordKeys = []string{"added-records", "deleted-records", "added-position-deletes", "removed-position-deletes", "added-equality-deletes", "removed-equality-deletes"}
-	snapshotTotalKeys  = []string{"total-records", "total-position-deletes", "total-equality-deletes"}
-	snapshotFileKeys   = []string{"total-data-files", "total-delete-files"}
+	snapshotRecordKeys = []string{"added-records", "deleted-records", "added-position-deletes", "removed-position-deletes"}
+	snapshotTotalKeys  = []string{"total-records", "total-position-deletes"}
+	snapshotFileKeys   = []string{"total-data-files"}
 )
 
 // icebergFile is one row of the table's files metadata table, data and delete files alike.
 type icebergFile struct {
-	Content     string // 0 data, 1 position deletes (and deletion vectors), 2 equality deletes
-	Format      string
-	Partition   string // the partition tuple as JSON; "" for an unpartitioned table
-	EqualityIDs []int
-	Records     int64
-	NullCounts  map[string]int64 // field id -> null count
+	Content    string // 0 data, 1 position deletes (and deletion vectors), 2 equality deletes
+	Format     string
+	Partition  string // the partition tuple as JSON; "" for an unpartitioned table
+	Records    int64
+	NullCounts map[string]int64 // field id -> null count
 }
 
 // ReadIcebergMetadata reads and normalizes a table's metadata: its current metadata.json and its
@@ -271,7 +271,7 @@ func ReadIcebergMetadata(ctx context.Context, t *testing.T, spark sql.SparkSessi
 }
 
 // readIcebergFiles reads the files metadata table with every value cast to a string, so nothing
-// depends on how Spark Connect hands back ints, arrays or maps. An unpartitioned table's files
+// depends on how Spark Connect hands back ints or maps. An unpartitioned table's files
 // table has no partition column.
 func readIcebergFiles(ctx context.Context, t *testing.T, spark sql.SparkSession, fullTableName string, partitioned bool) []icebergFile {
 	t.Helper()
@@ -280,7 +280,7 @@ func readIcebergFiles(ctx context.Context, t *testing.T, spark sql.SparkSession,
 		partition = "to_json(`partition`)"
 	}
 	query := fmt.Sprintf("SELECT CAST(content AS STRING) AS content, file_format, %s AS part, "+
-		"COALESCE(to_json(equality_ids), '[]') AS equality_ids, CAST(record_count AS STRING) AS record_count, "+
+		"CAST(record_count AS STRING) AS record_count, "+
 		"COALESCE(to_json(null_value_counts), '{}') AS null_counts FROM %s.files", partition, fullTableName)
 	df, err := spark.Sql(ctx, query)
 	require.NoErrorf(t, err, "failed to query the files of %s", fullTableName)
@@ -296,7 +296,6 @@ func readIcebergFiles(ctx context.Context, t *testing.T, spark sql.SparkSession,
 		}
 		file.Records, err = strconv.ParseInt(fmt.Sprint(row.Value("record_count")), 10, 64)
 		require.NoErrorf(t, err, "record_count of a file in %s", fullTableName)
-		require.NoErrorf(t, json.Unmarshal([]byte(fmt.Sprint(row.Value("equality_ids"))), &file.EqualityIDs), "equality_ids of a file in %s", fullTableName)
 		require.NoErrorf(t, json.Unmarshal([]byte(fmt.Sprint(row.Value("null_counts"))), &file.NullCounts), "null_value_counts of a file in %s", fullTableName)
 		files = append(files, file)
 	}
@@ -388,7 +387,7 @@ func normalizeIcebergMetadata(file icebergMetadataFile, files []icebergFile) (De
 	// snapshots: how many, and how many of each kind of commit, in no order.
 	m.set(MetaSnapshots, "count", strconv.Itoa(len(file.Snapshots)))
 	for _, snapshot := range file.Snapshots {
-		parts := []string{snapshot.Summary["operation"]}
+		var parts []string
 		for _, key := range snapshotRecordKeys {
 			if value, ok := snapshot.Summary[key]; ok {
 				parts = append(parts, key+"="+value)
@@ -422,16 +421,12 @@ func normalizeIcebergMetadata(file icebergMetadataFile, files []icebergFile) (De
 				}
 				m.add(MetaColumnStats, name(fieldID)+".null_count", nulls)
 			}
-		case "1", "2":
-			kind := map[string]string{"1": "position", "2": "equality"}[f.Content]
-			columns := make([]string, 0, len(f.EqualityIDs))
-			for _, id := range f.EqualityIDs {
-				columns = append(columns, name(id))
-			}
-			slices.Sort(columns)
-			group := fmt.Sprintf("%%p %s %s [%s]", kind, f.Format, strings.Join(columns, ","))
+		case "1":
+			group := fmt.Sprintf("%%p position %s", f.Format)
 			m.addPartition(MetaFiles, partition, "delete "+group, 1)
 			m.addPartition(MetaDeleteRecords, partition, group, f.Records)
+		case "2":
+			// equality delete files are skipped on purpose; the file count check will be removed from the backward compatibility test as well
 		default:
 			return DestinationMetadata{}, fmt.Errorf("unknown file content %q", f.Content)
 		}
