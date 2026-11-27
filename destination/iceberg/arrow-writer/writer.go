@@ -37,11 +37,15 @@ type ArrowWriter struct {
 	// deleteMode decides how superseded rows are expressed: under DeletionVector, positions stream to the server as Puffin vectors instead of a delete file.
 	deleteMode types.UpdateType
 	// pendingVectors buffers positions per data file until a batch is worth sending. Only used under DeleteModeDeletionVector.
-	pendingVectors     map[string]*pendingVector
+	pendingVectors map[string]*pendingVector
+	// writtenDataFiles maps each data file this writer produced to its partition values, so a vector superseding a row in one
+	// is stamped with that file's partition. No manifest lists these files before the commit; the server resolves committed ones itself.
+	writtenDataFiles   map[string][]any
 	pendingVectorCount int
 }
 
-// pendingVector is the positions to delete from one data file, plus the partition it's stamped with (the one being written, not necessarily the referenced file's). First writer to touch a path wins - a data file carries only one vector.
+// pendingVector is the positions to delete from one data file, plus the partition that file lives in when this writer produced it
+// (otherwise the one being written, which the server replaces with the committed file's own). A data file carries only one vector.
 type pendingVector struct {
 	positions       []int64
 	partitionValues []any
@@ -93,7 +97,8 @@ func New(ctx context.Context, options *destination.Options, partitionInfo []inte
 		indexThread:   indexThread,
 		deleteMode:    stream.GetUpdateType(),
 
-		pendingVectors: make(map[string]*pendingVector),
+		pendingVectors:   make(map[string]*pendingVector),
+		writtenDataFiles: make(map[string][]any),
 	}
 
 	if err := writer.initialize(ctx); err != nil {
@@ -364,6 +369,7 @@ func (w *ArrowWriter) roll(ctx context.Context, rw *RollingWriter, partitionKey 
 		return nil, fmt.Errorf("failed to allocate new file path after flush: %w", err)
 	}
 	newWriter.filePath = newFilePath
+	w.trackDataFile(newWriter)
 
 	return newWriter, nil
 }
@@ -609,6 +615,7 @@ func (w *ArrowWriter) createWriter(ctx context.Context, pKey string, values []an
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rolling writer: %s", err)
 	}
+	w.trackDataFile(rw)
 
 	return rw, nil
 }
@@ -640,12 +647,24 @@ func (w *ArrowWriter) newRollingWriter(ctx context.Context, arrowSchema arrow.Sc
 	}, nil
 }
 
+// trackDataFile remembers the partition of a data file this writer is about to fill.
+func (w *ArrowWriter) trackDataFile(rw *RollingWriter) {
+	if rw.fileType == fileTypeData {
+		w.writtenDataFiles[rw.filePath] = rw.partitionValues
+	}
+}
+
 // queueVectorDeletes buffers positions and ships them once enough have accumulated.
 func (w *ArrowWriter) queueVectorDeletes(ctx context.Context, deletes []PositionalDelete, partitionValues []any) error {
 	for _, d := range deletes {
 		pending, exists := w.pendingVectors[d.FilePath]
 		if !exists {
-			pending = &pendingVector{partitionValues: partitionValues}
+			// an update can move a row between partitions, so the superseded row's file need not be in the one being written
+			values, written := w.writtenDataFiles[d.FilePath]
+			if !written {
+				values = partitionValues
+			}
+			pending = &pendingVector{partitionValues: values}
 			w.pendingVectors[d.FilePath] = pending
 		}
 		pending.positions = append(pending.positions, d.Position)

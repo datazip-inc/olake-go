@@ -6,6 +6,7 @@ import org.apache.iceberg.io.OutputFileFactory;
 
 import io.olake.iceberg.IcebergUtil;
 import io.olake.iceberg.tableoperator.ArrowDeletionVectorWriter;
+import io.olake.iceberg.tableoperator.DataFilePartitions;
 import io.olake.iceberg.tableoperator.DeleteMode;
 import io.olake.iceberg.tableoperator.IcebergTableOperator;
 
@@ -16,6 +17,8 @@ public class IcebergSession {
     public final String identifierField;
     public final boolean upsert;
     public final DeleteMode deleteMode;
+    /** Partition of every data file a delete may reference; shared by the rows and arrow paths. */
+    public final DataFilePartitions dataFilePartitions;
     /**
      * Built lazily by the arrow path on the first DELETION_VECTORS batch and closed at
      * REGISTER_AND_COMMIT. Null in every other mode, and until the first batch arrives.
@@ -25,6 +28,8 @@ public class IcebergSession {
     public IcebergSession(Table icebergTable, boolean upsert, String identifierField, DeleteMode deleteMode) {
         this.icebergTable = icebergTable;
         this.op = new IcebergTableOperator(upsert, deleteMode, identifierField);
+        this.dataFilePartitions = new DataFilePartitions(icebergTable);
+        this.op.useDataFilePartitions(dataFilePartitions);
         this.identifierField = identifierField;
         this.upsert = upsert;
         this.deleteMode = deleteMode;

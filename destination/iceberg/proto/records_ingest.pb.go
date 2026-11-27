@@ -1852,10 +1852,10 @@ type ArrowPayload_DeletionVectorBatch_Entry struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DataFilePath string                 `protobuf:"bytes,1,opt,name=data_file_path,json=dataFilePath,proto3" json:"data_file_path,omitempty"`
 	Positions    []int64                `protobuf:"varint,2,rep,packed,name=positions,proto3" json:"positions,omitempty"`
-	// Partition the vector is stamped with: the one being WRITTEN when these rows
-	// were superseded, not necessarily the one the referenced data file lives in.
-	// Matches how the rows path routes the same delete - see the TODO on
-	// ArrowDeletionVectorWriter.
+	// Partition of the referenced data file when the caller wrote it this sync,
+	// otherwise the one being written. The server stamps the vector with the
+	// partition the table's manifests list for a committed file, and only falls
+	// back to these values for a file no manifest lists yet.
 	PartitionValues []*ArrowPayload_FileMetadata_PartitionValue `protobuf:"bytes,3,rep,name=partition_values,json=partitionValues,proto3" json:"partition_values,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache

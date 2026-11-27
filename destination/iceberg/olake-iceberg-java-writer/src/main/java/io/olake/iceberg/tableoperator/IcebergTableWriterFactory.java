@@ -31,6 +31,9 @@ public class IcebergTableWriterFactory {
   public DeleteMode deleteMode = DeleteMode.EQUALITY;
   // Row-identity column, set even where the catalog refuses to declare it; null falls back to the table's.
   public String identifierField;
+  // Where the data files that positional deletes reference live; shared across a session's
+  // writers so the table's manifests are read once. Null builds one per writer.
+  public DataFilePartitions dataFilePartitions;
 
   // One positional delete file per referenced data file. Matches the granularity the
   // equality path has always used. PARTITION trades reader-side skipping for far fewer
@@ -89,7 +92,9 @@ public class IcebergTableWriterFactory {
       return new PositionalDeltaWriter(icebergTable.spec(), format, appenderFactory, fileFactory,
           icebergTable.io(),
           targetFileSize, icebergTable.schema(), keepDeletes,
-          deleteSink(icebergTable, format, appenderFactory, fileFactory), identifierField);
+          deleteSink(icebergTable, format, appenderFactory, fileFactory),
+          dataFilePartitions != null ? dataFilePartitions : new DataFilePartitions(icebergTable),
+          identifierField);
     }
 
     Set<Integer> identifierFieldIds = icebergTable.schema().identifierFieldIds();

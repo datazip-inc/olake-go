@@ -163,7 +163,7 @@ public class OlakeArrowIngester extends ArrowIngestServiceGrpc.ArrowIngestServic
                     }
 
                     if (session.dvWriter == null) {
-                        session.dvWriter = new ArrowDeletionVectorWriter(session.icebergTable);
+                        session.dvWriter = new ArrowDeletionVectorWriter(session.icebergTable, session.dataFilePartitions);
                     }
                     session.dvWriter.add(metadata.getDeletionVectors(), session.op);
                     sendResponse(responseObserver, "accepted deletion vector rows for thread " + threadId);
@@ -177,6 +177,7 @@ public class OlakeArrowIngester extends ArrowIngestServiceGrpc.ArrowIngestServic
                         out.write(uploadReq.getFileData().toByteArray());
                         out.flush();
                     }
+                    session.dataFilePartitions.recordUncommitted(uploadReq.getFilePath());
                     LOGGER.info("{} Successfully uploaded file to: {}", requestId, uploadReq.getFilePath());
                     sendResponse(responseObserver, uploadReq.getFilePath());
                 }

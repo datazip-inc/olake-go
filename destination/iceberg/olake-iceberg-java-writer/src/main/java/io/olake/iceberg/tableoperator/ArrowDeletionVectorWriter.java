@@ -45,11 +45,13 @@ public final class ArrowDeletionVectorWriter {
   private static final Logger LOGGER = LoggerFactory.getLogger(ArrowDeletionVectorWriter.class);
 
   private final Table table;
+  private final DataFilePartitions dataFilePartitions;
   private final DVFileWriter writer;
   private long positions;
 
-  public ArrowDeletionVectorWriter(Table table) {
+  public ArrowDeletionVectorWriter(Table table, DataFilePartitions dataFilePartitions) {
     this.table = table;
+    this.dataFilePartitions = dataFilePartitions;
     // Deletion vectors are Puffin, not the table's data format. An OutputFileFactory
     // takes its extension from the format it was built with, so the session's own
     // factory would name these blobs ".parquet".
@@ -63,20 +65,25 @@ public final class ArrowDeletionVectorWriter {
   /**
    * Folds one batch of positions into the vectors being built.
    *
-   * <p>TODO: stamp the vector with the REFERENCED data file's partition, not the one
-   * being written. They differ only when an update moves a row between partitions.
-   * Vectors match by path ({@code DeleteFileIndex.dvByPath}) so the delete still
-   * applies, but the manifest partition is wrong. Matches the rows path for now; fix
-   * both together.
+   * <p>Each vector is stamped with the partition of the data file it REFERENCES, which
+   * differs from the one being written when an update moves a row between partitions:
+   * a vector stamped with the new partition is pruned by partition-filtered scans, so
+   * the old row reappears, and Iceberg 1.12+ readers reject the table. A committed
+   * file's partition is read from the table's manifests; a file the caller uploaded this
+   * sync is not listed in any yet, and for those the caller sends its partition.
    */
   public void add(ArrowPayload.DeletionVectorBatch batch, IcebergTableOperator operator) {
     PartitionSpec spec = table.spec();
     for (ArrowPayload.DeletionVectorBatch.Entry entry : batch.getEntriesList()) {
       String dataFilePath = entry.getDataFilePath();
       // Iceberg rejects a non-null partition on an unpartitioned spec, and vice versa.
-      StructLike partition = spec.isUnpartitioned()
-          ? null
-          : operator.partitionDataFromTypedValues(spec, entry.getPartitionValuesList());
+      StructLike partition = null;
+      if (!spec.isUnpartitioned()) {
+        partition = dataFilePartitions.partitionOf(dataFilePath);
+        if (partition == null) {
+          partition = operator.partitionDataFromTypedValues(spec, entry.getPartitionValuesList());
+        }
+      }
 
       for (long position : entry.getPositionsList()) {
         writer.delete(dataFilePath, position, spec, partition);

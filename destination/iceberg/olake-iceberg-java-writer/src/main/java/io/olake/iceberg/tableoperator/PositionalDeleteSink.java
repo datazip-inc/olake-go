@@ -4,11 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Function;
 
 import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.StructLike;
@@ -24,8 +24,7 @@ import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.OutputFileFactory;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.util.CharSequenceSet;
-
-import com.google.common.collect.Maps;
+import org.apache.iceberg.util.StructLikeMap;
 
 /**
  * Where a writer sends "the row at this offset of this file is superseded".
@@ -57,13 +56,6 @@ interface PositionalDeleteSink extends Closeable {
   /** Stand-in for a sink that never wrote anything. */
   DeleteWriteResult EMPTY = new DeleteWriteResult(List.of(), CharSequenceSet.empty(), List.of());
 
-  /** Map key for a partition, since an unpartitioned spec routes on a null partition. */
-  Object UNPARTITIONED = new Object();
-
-  static Object partitionKey(StructLike partition) {
-    return partition == null ? UNPARTITIONED : partition;
-  }
-
   /**
    * Writes positional delete files, one per referenced data file.
    *
@@ -77,7 +69,11 @@ interface PositionalDeleteSink extends Closeable {
     private final FileAppenderFactory<Record> appenderFactory;
     private final OutputFileFactory fileFactory;
     private final DeleteGranularity granularity;
-    private final Map<Object, SortingPositionOnlyDeleteWriter<Record>> writers = Maps.newHashMap();
+    // Keyed by partition VALUE: a delete may be routed on the writer's mutable partition
+    // template, a copy of it, or a partition read from a manifest, and all three must
+    // reach the same writer. Created on the first delete, which brings the spec.
+    private StructLikeMap<SortingPositionOnlyDeleteWriter<Record>> partitionedWriters;
+    private SortingPositionOnlyDeleteWriter<Record> unpartitionedWriter;
     private final PositionDelete<Record> positionDelete = PositionDelete.create();
     private DeleteWriteResult aggregated;
 
@@ -97,26 +93,63 @@ interface PositionalDeleteSink extends Closeable {
     }
 
     private SortingPositionOnlyDeleteWriter<Record> writerFor(PartitionSpec spec, StructLike partition) {
-      return writers.computeIfAbsent(
-          partitionKey(partition),
-          ignored -> {
-            // The caller may pass a mutable, reused partition-key template. Copy before
-            // capturing it in the writer-creation closure below, which fires lazily on
-            // the writer's first flush - by then the template may already describe a
-            // different row's partition.
-            StructLike stable = partition instanceof PartitionKey ? ((PartitionKey) partition).copy() : partition;
-            return new SortingPositionOnlyDeleteWriter<>(
-                () -> appenderFactory.newPosDeleteWriter(
-                    stable == null ? fileFactory.newOutputFile() : fileFactory.newOutputFile(spec, stable),
-                    format, stable),
-                granularity);
-          });
+      if (partition == null) {
+        if (unpartitionedWriter == null) {
+          unpartitionedWriter = newWriter(spec, null);
+        }
+        return unpartitionedWriter;
+      }
+
+      if (partitionedWriters == null) {
+        partitionedWriters = StructLikeMap.create(spec.partitionType());
+      }
+      SortingPositionOnlyDeleteWriter<Record> writer = partitionedWriters.get(partition);
+      if (writer == null) {
+        // The caller may pass a mutable, reused partition-key template. Copy before it
+        // becomes a map key or is captured by the writer-creation closure, which fires
+        // lazily on the writer's first flush - by then the template may already describe
+        // a different row's partition.
+        StructLike stable = stableCopy(partition);
+        writer = newWriter(spec, stable);
+        partitionedWriters.put(stable, writer);
+      }
+      return writer;
+    }
+
+    private SortingPositionOnlyDeleteWriter<Record> newWriter(PartitionSpec spec, StructLike partition) {
+      return new SortingPositionOnlyDeleteWriter<>(
+          () -> appenderFactory.newPosDeleteWriter(
+              partition == null ? fileFactory.newOutputFile() : fileFactory.newOutputFile(spec, partition),
+              format, partition),
+          granularity);
+    }
+
+    private static StructLike stableCopy(StructLike partition) {
+      if (partition instanceof PartitionKey key) {
+        return key.copy();
+      }
+      if (partition instanceof PartitionData data) {
+        return data.copy();
+      }
+      return partition;
+    }
+
+    private List<SortingPositionOnlyDeleteWriter<Record>> writers() {
+      List<SortingPositionOnlyDeleteWriter<Record>> all = new ArrayList<>();
+      if (unpartitionedWriter != null) {
+        all.add(unpartitionedWriter);
+      }
+      if (partitionedWriters != null) {
+        all.addAll(partitionedWriters.values());
+      }
+      return all;
     }
 
     @Override
     public void close() throws IOException {
       IOException failure = null;
-      for (SortingPositionOnlyDeleteWriter<Record> writer : writers.values()) {
+      List<SortingPositionOnlyDeleteWriter<Record>> writers = writers();
+      for (SortingPositionOnlyDeleteWriter<Record> writer : writers) {
         try {
           writer.close();
         } catch (IOException e) {
@@ -133,7 +166,7 @@ interface PositionalDeleteSink extends Closeable {
 
       List<DeleteFile> files = new ArrayList<>();
       CharSequenceSet referenced = CharSequenceSet.empty();
-      for (SortingPositionOnlyDeleteWriter<Record> writer : writers.values()) {
+      for (SortingPositionOnlyDeleteWriter<Record> writer : writers) {
         DeleteWriteResult result = writer.result();
         files.addAll(result.deleteFiles());
         referenced.addAll(result.referencedDataFiles());

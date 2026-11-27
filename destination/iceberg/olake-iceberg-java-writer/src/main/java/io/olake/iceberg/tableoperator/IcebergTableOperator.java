@@ -323,6 +323,9 @@ public class IcebergTableOperator {
   
       filesToCommit.clear();
       rewrittenDeleteFiles.clear();
+      if (writerFactory2.dataFilePartitions != null) {
+        writerFactory2.dataFilePartitions.committed();
+      }
       LOGGER.info("Staged snapshot id: {}, base snapshot id: {}, parent snapshot id: {}", staged.snapshotId(), baseSnapshotId, staged.parentId());
       // check commit parent snapshot if it is not equal to base, then return 0 so that indexer will not save latest snapshot
       if  (staged.parentId() != null && !Objects.equals(baseSnapshotId, staged.parentId())) {
@@ -335,6 +338,11 @@ public class IcebergTableOperator {
       LOGGER.error(msg, e);
       throw new RuntimeException(msg, e);
     }
+  }
+
+  /** Shares the session's data file partitions with every writer this operator creates. */
+  public void useDataFilePartitions(DataFilePartitions dataFilePartitions) {
+    writerFactory2.dataFilePartitions = dataFilePartitions;
   }
 
   /**
