@@ -75,6 +75,24 @@ func TestConfig_Validate(t *testing.T) {
 			},
 		},
 		{
+			name: "valid hostname containing http",
+			config: &Config{
+				Host:     "http-db.internal",
+				Port:     5432,
+				Database: "postgres",
+			},
+			expectedContains: []string{"http-db.internal:5432/postgres"},
+		},
+		{
+			name: "invalid postgres connection URL in host",
+			config: &Config{
+				Host:     "postgresql://db.internal",
+				Port:     5432,
+				Database: "postgres",
+			},
+			expectErr: true,
+		},
+		{
 			name: "invalid host with scheme",
 			config: &Config{
 				Host:     "https://localhost",

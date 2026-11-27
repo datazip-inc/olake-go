@@ -41,9 +41,9 @@ type CDC struct {
 func (c *Config) Validate() error {
 	if c.Host == "" {
 		return errs.Precondition(errs.ConfigInvalid, codeHostMissing, fmt.Errorf("empty host name"))
-	} else if strings.Contains(c.Host, "https") || strings.Contains(c.Host, "http") {
+	} else if strings.Contains(c.Host, "://") {
 		return errs.Precondition(errs.ConfigInvalid, codeHostSchemeIncluded,
-			fmt.Errorf("host should not contain http or https"))
+			fmt.Errorf("host must be a hostname or IP address without a URL scheme"))
 	}
 
 	// Validate port
