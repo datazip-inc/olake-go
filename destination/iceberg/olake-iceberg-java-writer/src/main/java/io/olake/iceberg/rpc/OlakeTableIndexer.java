@@ -84,7 +84,7 @@ public class OlakeTableIndexer extends TableIndexServiceGrpc.TableIndexServiceIm
       String message = String.format("failed to scan table index for thread %s: %s",
           request.getThreadId(), e.getMessage());
       LOGGER.error(message, e);
-      responseObserver.onError(io.grpc.Status.INTERNAL.withDescription(message).asRuntimeException());
+      responseObserver.onError(OlakeFailures.toStatusException(e, "SCAN_TABLE_INDEX", message));
     }
   }
 
@@ -112,7 +112,7 @@ public class OlakeTableIndexer extends TableIndexServiceGrpc.TableIndexServiceIm
       String message = String.format("failed to migrate equality deletes for thread %s: %s",
           request.getThreadId(), e.getMessage());
       LOGGER.error(message, e);
-      responseObserver.onError(io.grpc.Status.INTERNAL.withDescription(message).asRuntimeException());
+      responseObserver.onError(OlakeFailures.toStatusException(e, "MIGRATE_EQUALITY_DELETES", message));
     }
   }
 
@@ -166,7 +166,7 @@ public class OlakeTableIndexer extends TableIndexServiceGrpc.TableIndexServiceIm
       Throwable failure) {
     String message = String.format("failed to read rows for thread %s: %s", request.getThreadId(), failure.getMessage());
     LOGGER.error(message, failure);
-    responseObserver.onError(io.grpc.Status.INTERNAL.withDescription(message).asRuntimeException());
+    responseObserver.onError(OlakeFailures.toStatusException(failure, "READ_ROWS", message));
   }
 
   private IcebergSession requireSession(String threadId) throws Exception {

@@ -322,7 +322,7 @@ func ReportFailure(err error) {
 		errorSource = connector.Type()
 	}
 	// Set only by sync, which is what makes this event joinable to the rest of the run's shape.
-	telemetry.TrackFailure(executedCommand(), errorSource, syncID, f)
+	telemetry.TrackFailure(executedCommand(), errorSource, syncID, destinationConfig, f)
 	telemetry.Flush()
 }
 

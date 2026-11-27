@@ -54,7 +54,7 @@ func TestAccessDelegationHeader(t *testing.T) {
 			}
 			require.NoError(t, config.Validate())
 
-			raw, err := getServerConfigJSON(config, defaultServerPort, false, "")
+			raw, err := getServerConfigJSON(config, defaultServerPort, false, "", "")
 			require.NoError(t, err)
 
 			var serverConfig map[string]any

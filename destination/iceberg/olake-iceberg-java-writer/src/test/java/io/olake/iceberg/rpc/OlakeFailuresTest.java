@@ -5,12 +5,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.ConnectException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -199,7 +203,110 @@ class OlakeFailuresTest {
         }
     }
 
-    // Java sends facts only (class + vendor code). The category is decided in Go.
+    static Stream<Arguments> httpStatusCases() {
+        // the AWS SDK keeps the status on its service exceptions, code or not
+        S3Exception headForbidden = (S3Exception) S3Exception.builder().message("denied").statusCode(403).build();
+        // OlakeRESTCatalog attaches it to what Iceberg's REST client raises
+        RuntimeException restFailure = new RuntimeException("Unable to process: m");
+        restFailure.addSuppressed(new OlakeFailures.HttpError(502, null));
+
+        return Stream.of(
+                Arguments.of("aws service exception", headForbidden, "403"),
+                Arguments.of("aws service exception below a wrapper", new RuntimeException("x", headForbidden), "403"),
+                Arguments.of("recorded by the REST client", restFailure, "502"),
+                Arguments.of("recorded below a wrapper", new IllegalStateException("x", restFailure), "502"),
+                // not every failure is an HTTP response
+                Arguments.of("no response", new IllegalStateException("x"), null),
+                Arguments.of("aws exception without a status", s3Exception("AccessDenied"), null));
+    }
+
+    // the status travels when the failure was an HTTP response; otherwise the key is omitted
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("httpStatusCases")
+    @DisplayName("http status travels when there is one")
+    void httpStatusMetadata(String name, Throwable cause, String expected) throws Exception {
+        Map<String, String> metadata = errorInfoOf(cause).getMetadataMap();
+
+        if (expected == null) {
+            assertFalse(metadata.containsKey(OlakeFailures.METADATA_HTTP_STATUS));
+        } else {
+            assertEquals(expected, metadata.get(OlakeFailures.METADATA_HTTP_STATUS));
+        }
+    }
+
+    /** Built the way the AWS SDK builds its exceptions, so the builder is a frame of its own. */
+    private static S3Exception builtHere() {
+        return s3Exception("AccessDenied");
+    }
+
+    static Stream<Arguments> originCases() {
+        // the method that created the exception, not its constructor
+        Throwable thrownHere = new IllegalStateException("x");
+        // the root's origin, not the wrapper's: the wrapper is created in a different method
+        Throwable wrapped = new RuntimeException("outer", builtHere());
+        // the JVM can drop stack traces of exceptions it throws often
+        Throwable noStack = new IllegalStateException("x");
+        noStack.setStackTrace(new StackTraceElement[0]);
+
+        // every service answer is raised at the same SDK method; the Iceberg call above it differs
+        Throwable serviceAnswer = s3Exception("AccessDenied");
+        serviceAnswer.setStackTrace(new StackTraceElement[] {
+                new StackTraceElement("software.amazon.awssdk.core.internal.http.pipeline.stages.utils.RetryableStageHelper",
+                        "retryPolicyDisallowedRetryException", "RetryableStageHelper.java", 1),
+                new StackTraceElement("software.amazon.awssdk.services.glue.DefaultGlueClient", "createDatabase",
+                        "DefaultGlueClient.java", 1),
+                new StackTraceElement("org.apache.iceberg.aws.glue.GlueCatalog", "createNamespace", "GlueCatalog.java", 1)});
+
+        String test = OlakeFailuresTest.class.getName();
+        return Stream.of(
+                Arguments.of("raised directly", thrownHere, test + ".originCases"),
+                Arguments.of("an aws service answer names the call that made the request", serviceAnswer,
+                        "org.apache.iceberg.aws.glue.GlueCatalog.createNamespace"),
+                // S3Exception$BuilderImpl.build is the top frame and must be skipped
+                Arguments.of("raised through a builder", builtHere(), test + ".s3Exception"),
+                Arguments.of("raised below a wrapper", wrapped, test + ".s3Exception"),
+                Arguments.of("no stack trace", noStack, null));
+    }
+
+    // origin names where the root cause was raised; omitted when it cannot be known
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("originCases")
+    @DisplayName("origin travels when the stack trace has one")
+    void originMetadata(String name, Throwable cause, String expected) throws Exception {
+        Map<String, String> metadata = errorInfoOf(cause).getMetadataMap();
+
+        if (expected == null) {
+            assertFalse(metadata.containsKey(OlakeFailures.METADATA_ORIGIN));
+        } else {
+            assertEquals(expected, metadata.get(OlakeFailures.METADATA_ORIGIN));
+        }
+    }
+
+    static Stream<Arguments> messageCases() {
+        Throwable root = new ConnectException("Connection refused");
+        return Stream.of(
+                // nothing to join
+                Arguments.of("a single exception sends its own message", new RuntimeException("boom"), "boom"),
+                // the outermost says what was attempted, the innermost why it failed
+                Arguments.of("every distinct message is joined, outermost first",
+                        new RuntimeException("Failed to connect: jdbc:postgresql://h/db", new SQLException("refused", root)),
+                        "Failed to connect: jdbc:postgresql://h/db <- refused <- Connection refused"),
+                // new RuntimeException(cause) takes the cause's text as its own
+                Arguments.of("a wrapper repeating its cause is sent once", new RuntimeException(root),
+                        "java.net.ConnectException: Connection refused"),
+                // absent rather than empty, like every other optional fact
+                Arguments.of("no message anywhere sends none", new RuntimeException((String) null), null));
+    }
+
+    // the messages are what a person reads to see why it failed; Go masks them
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("messageCases")
+    @DisplayName("the cause chain's messages travel")
+    void messageIsTheCauseChain(String name, Throwable cause, String expectedMessage) throws Exception {
+        assertEquals(expectedMessage, errorInfoOf(cause).getMetadataMap().get(OlakeFailures.METADATA_MESSAGE));
+    }
+
+    // Java sends facts only (class, vendor code, where it was raised). The category is decided in Go.
     @Test
     @DisplayName("no category is sent")
     void nothingElseTravels() throws Exception {
@@ -208,7 +315,37 @@ class OlakeFailuresTest {
 
         assertEquals(Map.of(
                 OlakeFailures.METADATA_OPERATION, "GET_OR_CREATE_TABLE",
-                OlakeFailures.METADATA_CODE, "42000"), info.getMetadataMap());
+                OlakeFailures.METADATA_CODE, "42000",
+                OlakeFailures.METADATA_MESSAGE, "table users column ssn is invalid",
+                OlakeFailures.METADATA_ORIGIN, OlakeFailuresTest.class.getName() + ".nothingElseTravels"),
+                info.getMetadataMap());
         assertTrue(info.getReason().startsWith("java.sql."), "reason should be a class name, got " + info.getReason());
+    }
+
+    // a failure to start has no gRPC call to ride on, so the same ErrorInfo goes to a file Go reads
+    @Test
+    @DisplayName("a startup failure is written as the ErrorInfo Go reads")
+    void startupReport(@TempDir Path dir) throws Exception {
+        RuntimeException failure = new RuntimeException("Unable to process: A warehouse 'w' does not exist");
+        failure.addSuppressed(new OlakeFailures.HttpError(404, "WarehouseNotFound"));
+        Path report = dir.resolve("report.pb");
+
+        OlakeFailures.writeStartupReport(failure, report.toString());
+
+        ErrorInfo info = ErrorInfo.parseFrom(Files.readAllBytes(report));
+        assertEquals(OlakeFailures.DOMAIN, info.getDomain());
+        assertEquals(RuntimeException.class.getName(), info.getReason());
+        assertEquals(OlakeFailures.OPERATION_STARTUP, info.getMetadataMap().get(OlakeFailures.METADATA_OPERATION));
+        assertEquals("404", info.getMetadataMap().get(OlakeFailures.METADATA_HTTP_STATUS));
+        assertEquals("WarehouseNotFound", info.getMetadataMap().get(OlakeFailures.METADATA_SERVER_ERROR_TYPE));
+    }
+
+    // the writer is already failing; a report it cannot write must not replace that failure
+    @Test
+    @DisplayName("an unwritable report path does not throw")
+    void startupReportUnwritable(@TempDir Path dir) {
+        OlakeFailures.writeStartupReport(new IllegalStateException("x"),
+                dir.resolve("missing-dir").resolve("report.pb").toString());
+        assertFalse(Files.exists(dir.resolve("missing-dir")));
     }
 }
