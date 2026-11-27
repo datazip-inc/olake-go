@@ -35,6 +35,8 @@ type icebergKind struct {
 	name string
 	// catalog is the container that serves the catalog.
 	catalog *testhandler.Service
+	// jvm is the writer JVM the kind's tests share and call directly; nil when each test starts its own writer.
+	jvm *testhandler.Service
 	// warehouse is the writer's iceberg_s3_path.
 	warehouse string
 	// config holds the catalog's own keys of the writer config.
@@ -50,13 +52,19 @@ func (k *icebergKind) Name() string {
 }
 
 func (k *icebergKind) Services() []*testhandler.Service {
+	if k.jvm != nil {
+		return []*testhandler.Service{minioService, k.catalog, k.jvm}
+	}
 	return []*testhandler.Service{minioService, k.catalog}
 }
 
-// Open takes this test's turn on the Iceberg writer and returns the MinIO warehouse plus the catalog's keys.
+// Open takes this test's turn on the Iceberg writer, unless the kind's JVM is shared, and returns the MinIO
+// warehouse plus the catalog's keys.
 func (k *icebergKind) Open(ctx context.Context, t testing.TB) (*types.WriterConfig, error) {
-	if err := leaseIcebergWriter(ctx, t); err != nil {
-		return nil, err
+	if k.jvm == nil {
+		if err := leaseIcebergWriter(ctx, t); err != nil {
+			return nil, err
+		}
 	}
 	config := map[string]any{
 		"iceberg_s3_path": k.warehouse,

@@ -25,6 +25,19 @@ jobs:
         with:
           save: "true"
 
+      - name: Restore Iceberg writer jar
+        id: jar
+        uses: ./.github/actions/iceberg-jar
+
+      # Only a jar cache miss needs Java, to build the jar with Maven; the writer JVM runs in its container.
+      - name: Set up Java for the Iceberg writer jar
+        if: steps.jar.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
       - name: Start containers for unit-test
         timeout-minutes: 15
         run: make -j --output-sync=target testutils.all.start

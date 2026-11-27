@@ -21,20 +21,26 @@ var jdbcCatalogService = &testhandler.Service{
 }
 
 // IcebergJDBC writes Iceberg tables through a JDBC catalog kept in its own Postgres container.
-var IcebergJDBC testhandler.DestinationKind = &icebergKind{
-	name:      "iceberg-jdbc",
-	catalog:   jdbcCatalogService,
-	warehouse: "s3a://" + bucket + "/iceberg_jdbc",
-	config: map[string]any{
-		"catalog_type":  "jdbc",
-		"jdbc_url":      fmt.Sprintf("jdbc:postgresql://%s/%s", jdbcCatalogService.Addr(), jdbcCatalogDatabase),
-		"jdbc_username": serverUser,
-		"jdbc_password": serverKey,
-	},
-	dropNamespace: dropJDBCNamespace,
-	files: func(namespace string) string {
-		return "iceberg_jdbc/" + namespace
-	},
+var IcebergJDBC testhandler.DestinationKind = jdbcKind("iceberg-jdbc", nil)
+
+// jdbcKind writes into the JDBC catalog and its warehouse; jvm is the writer its tests share, nil when each starts its own.
+func jdbcKind(name string, jvm *testhandler.Service) *icebergKind {
+	return &icebergKind{
+		name:      name,
+		catalog:   jdbcCatalogService,
+		jvm:       jvm,
+		warehouse: "s3a://" + bucket + "/iceberg_jdbc",
+		config: map[string]any{
+			"catalog_type":  "jdbc",
+			"jdbc_url":      fmt.Sprintf("jdbc:postgresql://%s/%s", jdbcCatalogService.Addr(), jdbcCatalogDatabase),
+			"jdbc_username": serverUser,
+			"jdbc_password": serverKey,
+		},
+		dropNamespace: dropJDBCNamespace,
+		files: func(namespace string) string {
+			return "iceberg_jdbc/" + namespace
+		},
+	}
 }
 
 // dropJDBCNamespace removes a namespace and its tables from the catalog's two tables.
