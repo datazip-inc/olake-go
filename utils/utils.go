@@ -606,7 +606,7 @@ func RetryOnBackoff(ctx context.Context, attempts int, sleep time.Duration, f fu
 
 		// check if error is non retryable
 		if strings.Contains(err.Error(), constants.ErrNonRetryable.Error()) ||
-			strings.Contains(err.Error(), constants.ErrRestartRequired.Error()) {
+			errors.Is(err, constants.ErrRestartRequired) {
 			return err
 		}
 
@@ -624,15 +624,16 @@ func RetryOnBackoff(ctx context.Context, attempts int, sleep time.Duration, f fu
 	return err
 }
 
-// ExitCode returns ExitCodeRestartRequired when err is marked with ErrRestartRequired, otherwise ExitCodeFailure.
+// ExitCode returns 0 for nil, ExitCodeFailure for errors marked with ErrNonRetryable, and ExitCodeRestartRequired for every other error.
 func ExitCode(err error) int {
-	if err == nil {
+	switch {
+	case err == nil:
 		return 0
-	}
-	if errors.Is(err, constants.ErrRestartRequired) {
+	case errors.Is(err, constants.ErrNonRetryable):
+		return constants.ExitCodeFailure
+	default:
 		return constants.ExitCodeRestartRequired
 	}
-	return constants.ExitCodeFailure
 }
 
 // ExtractColumnName extracts a column name from regex capture groups.

@@ -311,13 +311,13 @@ func TestExitCode(t *testing.T) {
 		err      error
 		expected int
 	}{
-		{name: "plain error", err: errors.New("connection reset by peer"), expected: constants.ExitCodeFailure},
+		{name: "plain error", err: errors.New("connection reset by peer"), expected: constants.ExitCodeRestartRequired},
 		{name: "non retryable", err: fmt.Errorf("%w: publication missing", constants.ErrNonRetryable), expected: constants.ExitCodeFailure},
-		{name: "restart required", err: fmt.Errorf("%w: %w: partition loss", constants.ErrNonRetryable, constants.ErrRestartRequired), expected: constants.ExitCodeRestartRequired},
+		{name: "non retryable wrapped by an outer layer", err: fmt.Errorf("post cdc error: %w", fmt.Errorf("%w: LSN not updated", constants.ErrNonRetryable)), expected: constants.ExitCodeFailure},
+		{name: "restart required", err: fmt.Errorf("%w: partition loss", constants.ErrRestartRequired), expected: constants.ExitCodeRestartRequired},
 		{name: "restart required wrapped by an outer layer", err: fmt.Errorf("reader[0]: %w", fmt.Errorf("%w: partition loss", constants.ErrRestartRequired)), expected: constants.ExitCodeRestartRequired},
 		{name: "nil error", err: nil, expected: 0},
 	}
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.expected, ExitCode(tc.err))
@@ -348,5 +348,4 @@ func TestRetryOnBackoffMarkers(t *testing.T) {
 			assert.Equal(t, tc.expectedCalls, calls)
 		})
 	}
-
 }

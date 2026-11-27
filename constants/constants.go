@@ -119,7 +119,7 @@ var RelationalDrivers = []DriverType{Postgres, MySQL, Oracle, DB2, MSSQL}
 var ParallelCDCDrivers = []DriverType{MongoDB, MSSQL}
 
 // ErrNonRetryable marks errors that are not retried inside the current process.
-// It does not decide the exit code; a fresh run may still fix them (see ErrRestartRequired).
+// The process exits with ExitCodeFailure.
 var ErrNonRetryable = fmt.Errorf("failed with non retryable error")
 
 // ErrRestartRequired marks errors a fresh run can fix; they are not retried inside the current

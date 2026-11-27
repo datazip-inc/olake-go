@@ -23,7 +23,7 @@ func RegisterDriver(driver abstract.DriverInterface) {
 		code := utils.ExitCode(err)
 		hint := "please check the error and fix it before running the job again"
 		if code == constants.ExitCodeRestartRequired {
-			hint = "running the job again should fix this"
+			hint = "re-running the job might fix this"
 		}
 		logger.Errorf("failed with exit code %d: %s. Error: %s", code, hint, err)
 		os.Exit(code)

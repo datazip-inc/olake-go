@@ -317,10 +317,10 @@ func (r *ReaderManager) CreateReader(readerID, clientID string, enableRebalanceC
 			}
 		}
 
-		// Trigger non-retryable shutdown when partition ownership is lost.
+		// Trigger restart-required shutdown when partition ownership is lost.
 		onPartitionsLost := func(_ context.Context, _ *kgo.Client, lost map[string][]int32) {
 			logger.Warnf("reader %s lost partitions: %+v", clientID, lost)
-			r.exitMode.Store(nonRetryableExit)
+			r.exitMode.Store(restartRequiredExit)
 		}
 
 		readerOpts = append(readerOpts,
@@ -358,7 +358,7 @@ func (r *ReaderManager) FetchExitState() (stop bool, err error) {
 	case gracefulExit:
 		logger.Warnf("stopping kafka CDC processing gracefully due to consumer group rebalance")
 		return true, nil
-	case nonRetryableExit:
+	case restartRequiredExit:
 		return true, fmt.Errorf("%w: kafka sync aborted due to partition loss during consumer group rebalance", constants.ErrRestartRequired)
 	default:
 		return true, fmt.Errorf("%w: kafka sync aborted: unexpected exit mode", constants.ErrNonRetryable)
