@@ -48,6 +48,12 @@ type Kafka struct {
 	schemaRegistryClient *kafkapkg.SchemaRegistryClient
 	adminClient          *kadm.Client
 	topicPattern         *regexp2.Regexp
+	membership           kafkapkg.GroupMembership // how readers join the consumer group; zero value keeps the default
+}
+
+// SetGroupMembership sets how readers join the consumer group. Call it before PreCDC.
+func (k *Kafka) SetGroupMembership(membership kafkapkg.GroupMembership) {
+	k.membership = membership
 }
 
 func (k *Kafka) GetConfigRef() abstract.Config {
@@ -141,7 +147,10 @@ func (k *Kafka) Setup(ctx context.Context) error {
 }
 
 func (k *Kafka) Close() error {
-	if k.readerManager != nil {
+	if k.readerManager != nil && k.membership.KeepMembers {
+		// keep every member's seat; only close this process's readers
+		k.readerManager.ReleaseReaders()
+	} else if k.readerManager != nil {
 		if err := k.readerManager.RemoveExistingConsumers(context.Background(), k.client); err != nil {
 			logger.Warnf("failed to remove existing consumers during close: %s", err)
 		}
@@ -413,34 +422,20 @@ func (k *Kafka) getReaderAssignedPartitions(ctx context.Context, readerIndex int
 		return nil, fmt.Errorf("readerID not found for reader index %d", readerIndex)
 	}
 
-	describeGroupResp, describeGroupRespErr := k.adminClient.DescribeGroups(ctx, k.consumerGroupID)
-	if describeGroupRespErr != nil {
-		return nil, fmt.Errorf("DescribeGroups failed: %w", describeGroupRespErr)
+	seats, err := k.readerManager.SeatAssignments(ctx)
+	if err != nil {
+		return nil, err
 	}
+	return seats[readerID], nil
+}
 
-	if describeGroupResp.Error() != nil {
-		return nil, fmt.Errorf("describe group %s response error: %w", k.consumerGroupID, describeGroupResp.Error())
+// SeatAssignments returns the assigned partitions of every static member in the consumer group, keyed by instance id.
+// Call it after PreCDC.
+func (k *Kafka) SeatAssignments(ctx context.Context) (map[string][]types.PartitionKey, error) {
+	if k.readerManager == nil {
+		return nil, fmt.Errorf("reader manager not initialized, PreCDC must run first")
 	}
-
-	var assigned []types.PartitionKey
-	for _, member := range describeGroupResp[k.consumerGroupID].Members {
-		if member.InstanceID == nil || *member.InstanceID != readerID {
-			continue
-		}
-
-		assignment, ok := member.Assigned.AsConsumer()
-		if !ok {
-			continue
-		}
-
-		for _, topic := range assignment.Topics {
-			for _, partition := range topic.Partitions {
-				assigned = append(assigned, types.PartitionKey{Topic: topic.Topic, Partition: partition})
-			}
-		}
-	}
-
-	return assigned, nil
+	return k.readerManager.SeatAssignments(ctx)
 }
 
 // isConfluentWireFormat checks if data starts with Confluent wire format magic byte

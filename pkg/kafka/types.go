@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/datazip-inc/olake/types"
 	"github.com/twmb/franz-go/pkg/kadm"
@@ -24,6 +25,17 @@ type ReaderConfig struct {
 	ConsumerGroupID             string
 	Dialer                      []kgo.Opt
 	AdminClient                 *kadm.Client
+	Membership                  GroupMembership
+}
+
+// GroupMembership controls how readers join the consumer group. The zero value keeps the default behavior.
+type GroupMembership struct {
+	InstanceID       func(readerIndex int) string // static instance id per reader; nil uses group_<ULID>
+	SessionTimeout   time.Duration                // 0 uses the franz-go default (45s)
+	KeepMembers      bool                         // skip removing existing group members before joining
+	ReleaseAfterJoin bool                         // close readers after assignment; static seats stay until the session timeout
+	// ExpectedAssignment, when set, fails CreateReaders if a reader's assigned partitions differ from the returned ones
+	ExpectedAssignment func(readerIndex int) []types.PartitionKey
 }
 
 type kafkaReader struct {

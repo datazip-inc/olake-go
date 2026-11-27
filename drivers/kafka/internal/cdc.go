@@ -54,7 +54,8 @@ func (k *Kafka) PreCDC(ctx context.Context, streams []types.StreamInterface) err
 	}
 
 	// generate a new consumer group id if not present in state or config
-	groupID = utils.Ternary(groupID == "", utils.Ternary(k.config.ConsumerGroupID != "", k.config.ConsumerGroupID, fmt.Sprintf("olake-consumer-group-%d", time.Now().Unix())), groupID).(string)
+	// a ULID, not a timestamp: two jobs that start in the same second must not share a consumer group
+	groupID = utils.Ternary(groupID == "", utils.Ternary(k.config.ConsumerGroupID != "", k.config.ConsumerGroupID, fmt.Sprintf("olake-consumer-group-%s", utils.ULID())), groupID).(string)
 	k.consumerGroupID = groupID
 	logger.Infof("configured consumer group id: %s", k.consumerGroupID)
 
@@ -65,11 +66,14 @@ func (k *Kafka) PreCDC(ctx context.Context, streams []types.StreamInterface) err
 		Dialer:                      k.dialer,
 		AdminClient:                 k.adminClient,
 		ThreadsEqualTotalPartitions: k.config.ThreadsEqualTotalPartitions,
+		Membership:                  k.membership,
 	})
 
-	// remove stale consumers before creating new readers
-	if err := k.readerManager.RemoveExistingConsumers(ctx, k.client); err != nil {
-		return fmt.Errorf("failed to remove existing consumers: %w", err)
+	// remove stale consumers before creating new readers, unless existing members must keep their seats
+	if !k.membership.KeepMembers {
+		if err := k.readerManager.RemoveExistingConsumers(ctx, k.client); err != nil {
+			return fmt.Errorf("failed to remove existing consumers: %w", err)
+		}
 	}
 
 	// create new readers and wait for partition assignment

@@ -1,8 +1,11 @@
 package kafka
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/datazip-inc/olake/constants"
@@ -50,8 +53,12 @@ func (r *ReaderManager) CreateReaders(ctx context.Context, streams []types.Strea
 	// reader tasks = max threads if set to total partitions
 	readersToCreate := utils.Ternary(r.ShouldMatchPartitionCount(), totalPartitions, utils.Ternary(r.config.MaxThreads > totalPartitions, totalPartitions, r.config.MaxThreads).(int)).(int)
 
+	seenReaderIDs := make(map[string]struct{}, readersToCreate)
 	for readerIndex := range readersToCreate {
-		readerID := fmt.Sprintf("group_%s", utils.ULID())
+		readerID, err := r.readerInstanceID(readerIndex, seenReaderIDs)
+		if err != nil {
+			return err
+		}
 		clientID := fmt.Sprintf("olake-%s-%s", r.config.ConsumerGroupID, readerID)
 
 		// create reader (rebalance callbacks disabled during initial reader creation and partition assignment)
@@ -69,7 +76,113 @@ func (r *ReaderManager) CreateReaders(ctx context.Context, streams []types.Strea
 	}
 	logger.Infof("created %d readers for %d total partitions, with consumer group %s", len(r.readers), totalPartitions, r.config.ConsumerGroupID)
 	// wait for consumer group members to join and partitions to be assigned, with a 2-minute deadline.
-	return r.waitForPartitionAssignment(ctx)
+	if err := r.waitForPartitionAssignment(ctx); err != nil {
+		return err
+	}
+
+	if err := r.checkExpectedAssignment(ctx); err != nil {
+		return err
+	}
+
+	if r.config.Membership.ReleaseAfterJoin {
+		// static members send no LeaveGroup on close, so each seat keeps its assignment until the session timeout
+		r.ReleaseReaders()
+		logger.Infof("released %d readers, seats kept in consumer group %s", len(r.readers), r.config.ConsumerGroupID)
+	}
+	return nil
+}
+
+// readerInstanceID returns the static instance id for a reader, rejecting empty or duplicate ids.
+func (r *ReaderManager) readerInstanceID(readerIndex int, seen map[string]struct{}) (string, error) {
+	if r.config.Membership.InstanceID == nil {
+		return fmt.Sprintf("group_%s", utils.ULID()), nil
+	}
+
+	readerID := r.config.Membership.InstanceID(readerIndex)
+	if readerID == "" {
+		return "", fmt.Errorf("empty instance id for reader %d", readerIndex)
+	}
+	if _, exists := seen[readerID]; exists {
+		return "", fmt.Errorf("duplicate instance id %s for reader %d", readerID, readerIndex)
+	}
+	seen[readerID] = struct{}{}
+	return readerID, nil
+}
+
+// checkExpectedAssignment fails when a reader's assigned partitions differ from Membership.ExpectedAssignment.
+func (r *ReaderManager) checkExpectedAssignment(ctx context.Context) error {
+	if r.config.Membership.ExpectedAssignment == nil {
+		return nil
+	}
+
+	seats, err := r.SeatAssignments(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to verify expected assignment: %w", err)
+	}
+
+	for readerIndex, kafkaReader := range r.readers {
+		expected := r.config.Membership.ExpectedAssignment(readerIndex)
+		if !samePartitions(expected, seats[kafkaReader.id]) {
+			return fmt.Errorf("reader %s assignment changed after the seats were planned: expected %v, got %v", kafkaReader.id, expected, seats[kafkaReader.id])
+		}
+	}
+	return nil
+}
+
+// samePartitions reports whether both lists hold the same partitions, in any order.
+func samePartitions(a, b []types.PartitionKey) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	sorted := func(keys []types.PartitionKey) []types.PartitionKey {
+		keys = slices.Clone(keys)
+		slices.SortFunc(keys, func(x, y types.PartitionKey) int {
+			return cmp.Or(strings.Compare(x.Topic, y.Topic), cmp.Compare(x.Partition, y.Partition))
+		})
+		return keys
+	}
+	return slices.Equal(sorted(a), sorted(b))
+}
+
+// SeatAssignments returns the assigned partitions of every static member in the consumer group, keyed by instance id.
+func (r *ReaderManager) SeatAssignments(ctx context.Context) (map[string][]types.PartitionKey, error) {
+	describeGroupResp, describeGroupRespErr := r.config.AdminClient.DescribeGroups(ctx, r.config.ConsumerGroupID)
+	if describeGroupRespErr != nil {
+		return nil, fmt.Errorf("DescribeGroups failed: %w", describeGroupRespErr)
+	}
+
+	if describeGroupResp.Error() != nil {
+		return nil, fmt.Errorf("describe group %s response error: %w", r.config.ConsumerGroupID, describeGroupResp.Error())
+	}
+
+	seats := make(map[string][]types.PartitionKey)
+	for _, member := range describeGroupResp[r.config.ConsumerGroupID].Members {
+		if member.InstanceID == nil {
+			continue
+		}
+
+		assignment, ok := member.Assigned.AsConsumer()
+		if !ok {
+			continue
+		}
+
+		for _, topic := range assignment.Topics {
+			for _, partition := range topic.Partitions {
+				seats[*member.InstanceID] = append(seats[*member.InstanceID], types.PartitionKey{Topic: topic.Topic, Partition: partition})
+			}
+		}
+	}
+	return seats, nil
+}
+
+// ReleaseReaders closes reader clients without leaving the group; reader ids and count are kept.
+func (r *ReaderManager) ReleaseReaders() {
+	for _, kafkaReader := range r.readers {
+		if kafkaReader.reader != nil {
+			kafkaReader.reader.Close()
+			kafkaReader.reader = nil
+		}
+	}
 }
 
 // GetReader returns the created readers
@@ -264,7 +377,10 @@ func (r *ReaderManager) RemoveExistingConsumers(ctx context.Context, client *kgo
 	}
 
 	for _, kafkaReader := range r.readers {
-		kafkaReader.reader.Close()
+		// nil when the reader was already released
+		if kafkaReader.reader != nil {
+			kafkaReader.reader.Close()
+		}
 	}
 
 	return nil
@@ -308,6 +424,10 @@ func (r *ReaderManager) CreateReader(readerID, clientID string, enableRebalanceC
 		kgo.DisableAutoCommit(),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
+
+	if r.config.Membership.SessionTimeout > 0 {
+		readerOpts = append(readerOpts, kgo.SessionTimeout(r.config.Membership.SessionTimeout))
+	}
 
 	if enableRebalanceCallbacks {
 		// Exit gracefully when a rebalance is detected via assign/revoke callbacks.

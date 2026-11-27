@@ -291,7 +291,7 @@ You can save the state in a `state.json` file using the following format:
     "type": "STREAM",
     "global": {
         "state": {
-            "consumer_group_id": "olake-consumer-group-{timestamp}"
+            "consumer_group_id": "olake-consumer-group-{ulid}"
         },
         "streams": [
             "topics.Test-Topic1",
