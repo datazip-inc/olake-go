@@ -38,7 +38,7 @@ public class IcebergTableWriterFactory {
   // One positional delete file per referenced data file. Matches the granularity the
   // equality path has always used. PARTITION trades reader-side skipping for far fewer
   // delete files, which matters once deletes can reference arbitrary historical files.
-  private static final DeleteGranularity DELETE_GRANULARITY = DeleteGranularity.PARTITION;
+  static final DeleteGranularity DELETE_GRANULARITY = DeleteGranularity.PARTITION;
 
   public BaseTaskWriter<Record> create(Table icebergTable) {
 

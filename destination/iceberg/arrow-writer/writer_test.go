@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"testing"
 	"time"
 
@@ -38,10 +37,13 @@ func (committedIndex) Lookup(id string) (types.RowLocation, bool, error) {
 func (committedIndex) LastCommittedSnapshot() (int64, error)         { return 0, nil }
 func (committedIndex) Commit(*types.StreamIndexThread, *int64) error { return nil }
 
-// uploadServer stands in for the Java server: it hands out file paths and keeps the files uploaded.
+// uploadServer stands in for the Java server: it hands out file paths, keeps the files uploaded, and records the
+// superseded row positions streamed to it, with the partition each is sent with.
 type uploadServer struct {
-	paths    int
-	uploaded map[string][]byte
+	paths      int
+	uploaded   map[string][]byte
+	superseded map[string][]int64
+	partitions map[string][]string
 }
 
 func (s *uploadServer) SendClientRequest(_ context.Context, req any) (any, error) {
@@ -62,6 +64,17 @@ func (s *uploadServer) SendClientRequest(_ context.Context, req any) (any, error
 		return &proto.ArrowIngestResponse{}, nil
 	case proto.ArrowPayload_REGISTER_AND_COMMIT:
 		return &proto.ArrowIngestResponse{}, nil
+	case proto.ArrowPayload_DELETION_VECTORS:
+		for _, entry := range payload.GetMetadata().GetDeletionVectors().GetEntries() {
+			path := entry.GetDataFilePath()
+			s.superseded[path] = append(s.superseded[path], entry.GetPositions()...)
+			var values []string
+			for _, value := range entry.GetPartitionValues() {
+				values = append(values, value.GetStringValue())
+			}
+			s.partitions[path] = values
+		}
+		return &proto.ArrowIngestResponse{}, nil
 	}
 	return nil, fmt.Errorf("unexpected %v", payload.GetType())
 }
@@ -70,7 +83,7 @@ func (s *uploadServer) SendClientRequest(_ context.Context, req any) (any, error
 func newTestWriter(t *testing.T, partitionInfo []internal.PartitionInfo) (*ArrowWriter, *uploadServer, *types.StreamIndexThread) {
 	t.Helper()
 
-	server := &uploadServer{uploaded: map[string][]byte{}}
+	server := &uploadServer{uploaded: map[string][]byte{}, superseded: map[string][]int64{}, partitions: map[string][]string{}}
 	updateType := "pos"
 	stream := &types.ConfiguredStream{Stream: &types.Stream{Name: "t", Namespace: "n"}, StreamMetadata: types.StreamMetadata{UpdateType: &updateType}}
 	index := types.NewStreamIndexThread(committedIndex{})
@@ -127,7 +140,7 @@ func assertPageIndex(t *testing.T, data []byte) {
 }
 
 // Every location the index hands out holds its row's latest version, whether or not a read closed
-// the open file between two batches, and the positional deletes point at the versions replaced.
+// the open file between two batches, and the positions sent to the server point at the versions replaced.
 func TestEnsureReadableKeepsPositions(t *testing.T) {
 	testCases := []struct {
 		name          string
@@ -162,14 +175,12 @@ func TestEnsureReadableKeepsPositions(t *testing.T) {
 
 			require.NoError(t, w.Close(ctx, nil))
 
-			var dataFiles, deleteFiles []string
+			var dataFiles []string
 			for _, files := range w.createdFiles {
 				for _, data := range files.DataFiles {
 					dataFiles = append(dataFiles, data.FilePath)
 				}
-				for _, deletes := range files.PosDeleteFiles {
-					deleteFiles = append(deleteFiles, deletes.FilePath)
-				}
+				assert.Empty(t, files.PosDeleteFiles, "pos mode writes no delete file of its own: the server does")
 			}
 			assert.Len(t, dataFiles, tc.wantFiles)
 			stored := map[types.RowLocation][]string{} // each data file row's _olake_id and payload
@@ -187,11 +198,9 @@ func TestEnsureReadableKeepsPositions(t *testing.T) {
 				assert.Equal(t, []string{id, payload}, stored[location], "row %s at its location", id)
 			}
 			var deleted [][]string
-			for _, path := range deleteFiles {
-				for _, row := range parquetRows(t, server.uploaded[path], "file_path", "pos") {
-					position, err := strconv.ParseInt(row[1], 10, 64)
-					require.NoError(t, err)
-					deleted = append(deleted, stored[types.RowLocation{FilePath: row[0], Position: position}])
+			for path, positions := range server.superseded {
+				for _, position := range positions {
+					deleted = append(deleted, stored[types.RowLocation{FilePath: path, Position: position}])
 				}
 			}
 			assert.ElementsMatch(t, [][]string{{"1", "a"}, {"2", "b"}}, deleted, "the versions rows 1 and 2 replaced")
@@ -254,4 +263,24 @@ func TestEnsureReadableUploadsNamedOpenFiles(t *testing.T) {
 			assert.ElementsMatch(t, filesOf(tc.wantUploaded), slices.Collect(maps.Keys(server.uploaded)))
 		})
 	}
+}
+
+// A superseded row is sent with the partition of the file holding it when this writer produced that file: an update
+// can move a row to another partition, and no manifest lists the file before the commit. A row in a file an earlier
+// sync committed is sent with the partition being written, which the server replaces with the file's own.
+func TestSupersededRowsCarryTheirFilesPartition(t *testing.T) {
+	ctx := context.Background()
+	w, server, index := newTestWriter(t, []internal.PartitionInfo{{Field: "payload", SchemaField: "payload", Transform: "identity"}})
+	require.NoError(t, w.Write(ctx, []types.RawRecord{testRecord("1", "c", "a")}))
+	moved, found, err := index.Lookup("1")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	// row 1 moves from partition "a" to "b"; row 0, committed by an earlier sync, is updated into "b" too
+	require.NoError(t, w.Write(ctx, []types.RawRecord{testRecord("1", "u", "b"), testRecord("0", "u", "b")}))
+	require.NoError(t, w.Close(ctx, nil))
+
+	assert.Equal(t, map[string][]int64{moved.FilePath: {0}, committedFile: {0}}, server.superseded)
+	assert.Equal(t, []string{"a"}, server.partitions[moved.FilePath], "the partition of the file this writer wrote")
+	assert.Equal(t, []string{"b"}, server.partitions[committedFile], "the partition being written, for the server to replace")
 }

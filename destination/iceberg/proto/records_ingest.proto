@@ -149,10 +149,11 @@ message ArrowPayload {
     REGISTER_AND_COMMIT = 1;
     JSONSCHEMA = 2;
     FILEPATH = 3;
-    // Rows superseded by this sync, to be encoded as deletion vectors. Only sent
-    // under delete_mode DELETION_VECTOR, where the caller writes no delete file of
-    // its own: format version 3 rejects Parquet positional deletes, and the
-    // positions are already structured data on the caller's side. Sent incrementally
+    // Rows superseded by this sync, which the server encodes as deletion vectors
+    // (delete_mode DELETION_VECTOR) or Parquet positional delete files
+    // (POSITION). The caller writes no delete file of its own in either mode: only
+    // the server knows the partition spec and partition of a data file an earlier
+    // sync committed, which every delete has to be stamped with. Sent incrementally
     // during the sync so neither side buffers the whole set.
     DELETION_VECTORS = 4;
   }
@@ -211,7 +212,7 @@ message ArrowPayload {
     // REGISTER_AND_COMMIT: snapshot the caller's table index is checkpointed at.
     // The server refuses the commit when the table tip has moved past it.
     optional int64 base_snapshot_id = 7;
-    // DELETION_VECTORS only.
+    // DELETION_VECTORS only: positions for pos or dv mode.
     optional DeletionVectorBatch deletion_vectors = 8;
   }
 

@@ -1,6 +1,7 @@
 package io.olake.iceberg.tableoperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -9,7 +10,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.AppendFiles;
@@ -194,25 +194,54 @@ class PartitionMovingDeleteTest {
     // the arrow path: the caller streams positions with the partition it is writing; the
     // server stamps a committed file's own partition, and keeps the caller's for a file no
     // manifest lists yet (one the caller uploaded this sync)
-    @Test
-    @DisplayName("arrow deletion vectors take a committed file's partition from its manifest")
-    void arrowVectorsUseTheCommittedFilesPartition() throws Exception {
-        Table table = newTable(DeleteMode.DELETION_VECTOR);
-        String euFile = commitRows(table, DeleteMode.DELETION_VECTOR, row("1", "a", "eu"));
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(value = DeleteMode.class, names = {"POSITION", "DELETION_VECTOR"})
+    @DisplayName("arrow deletes take a committed file's partition from its manifest")
+    void arrowDeletesUseTheCommittedFilesPartition(DeleteMode mode) throws Exception {
+        Table table = newTable(mode);
+        String euFile = commitRows(table, mode, row("1", "a", "eu"));
         String uploadedThisSync = table.location() + "/data/region=jp/uploaded.parquet";
         DataFilePartitions partitions = new DataFilePartitions(table);
         partitions.recordUncommitted(uploadedThisSync);
 
-        ArrowDeletionVectorWriter vectors = new ArrowDeletionVectorWriter(table, partitions);
-        vectors.add(ArrowPayload.DeletionVectorBatch.newBuilder()
+        ArrowDeleteWriter deletes = new ArrowDeleteWriter(table, partitions, mode);
+        deletes.add(ArrowPayload.DeletionVectorBatch.newBuilder()
                 .addEntries(entry(euFile, "us"))
                 .addEntries(entry(uploadedThisSync, "jp"))
-                .build(), new IcebergTableOperator(true, DeleteMode.DELETION_VECTOR, "_olake_id"));
-        DeleteWriteResult result = vectors.complete();
+                .build(), new IcebergTableOperator(true, mode, "_olake_id"));
+        DeleteWriteResult result = deletes.complete();
 
-        Map<String, String> partitionByFile = result.deleteFiles().stream().collect(Collectors.toMap(
-                DeleteFile::referencedDataFile, file -> table.spec().partitionToPath(file.partition())));
-        assertEquals(Map.of(euFile, "region=eu", uploadedThisSync, "region=jp"), partitionByFile);
+        int spec = table.spec().specId();
+        assertEquals(List.of(spec + ":region=eu", spec + ":region=jp"),
+                specsAndPartitions(table, result.deleteFiles().toArray(DeleteFile[]::new)));
+        assertEquals(mode == DeleteMode.DELETION_VECTOR ? FileFormat.PUFFIN : FileFormat.PARQUET,
+                result.deleteFiles().get(0).format());
+    }
+
+    // the arrow writer sends partition values in partition_regex order; a spec OLake evolved keeps its
+    // surviving fields first, so the server matches values to fields by column and transform
+    @Test
+    @DisplayName("arrow partition values are matched to an evolved spec's fields by column and transform")
+    void arrowPartitionValuesFollowTheRegexOrder() throws Exception {
+        Table table = newTable(DeleteMode.POSITION);
+        table.updateSpec().removeField("region").addField("payload").commit();
+        table.updateSpec().addField("region").commit(); // spec is now [payload, region]
+        List<Map<String, String>> regex = List.of(
+                Map.of("field", "region", "transform", "identity"), Map.of("field", "payload", "transform", "identity"));
+
+        IcebergTableOperator operator = new IcebergTableOperator(true, DeleteMode.POSITION, "_olake_id");
+        operator.usePartitionValueOrder(regex);
+        StructLike partition = operator.partitionDataFromTypedValues(table.spec(), List.of(
+                ArrowPayload.FileMetadata.PartitionValue.newBuilder().setStringValue("eu").build(),
+                ArrowPayload.FileMetadata.PartitionValue.newBuilder().setStringValue("p").build()));
+
+        assertEquals("payload=p/region=eu", table.spec().partitionToPath(partition));
+
+        operator.usePartitionValueOrder(List.of(Map.of("field", "region", "transform", "identity")));
+        IllegalStateException missing = assertThrows(IllegalStateException.class,
+                () -> operator.partitionDataFromTypedValues(table.spec(), List.of(
+                        ArrowPayload.FileMetadata.PartitionValue.newBuilder().setStringValue("eu").build())));
+        assertEquals(true, missing.getMessage().contains("payload:identity"), missing.getMessage());
     }
 
     private Table newTable(DeleteMode mode) {

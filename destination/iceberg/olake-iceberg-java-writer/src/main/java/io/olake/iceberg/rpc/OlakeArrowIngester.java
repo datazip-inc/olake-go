@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.olake.iceberg.rpc.RecordIngest.ArrowPayload;
-import io.olake.iceberg.tableoperator.ArrowDeletionVectorWriter;
+import io.olake.iceberg.tableoperator.ArrowDeleteWriter;
 import io.olake.iceberg.tableoperator.DeleteMode;
 import io.grpc.stub.StreamObserver;
 
@@ -125,15 +125,19 @@ public class OlakeArrowIngester extends ArrowIngestServiceGrpc.ArrowIngestServic
                         }
                     }
 
-                    // Vectors are published in the same commit as the data files they
-                    // delete from, and the vectors they supersede leave in it too.
+                    // Server-side deletes are published in the same commit as the data files they
+                    // delete from; vectors they supersede leave in it too.
                     int vectorCount = 0;
-                    if (session.dvWriter != null) {
-                        DeleteWriteResult vectors = session.dvWriter.complete();
-                        session.dvWriter = null;
-                        vectorCount = vectors.deleteFiles().size();
-                        session.op.registerBuiltDeleteFiles(threadId, vectors.deleteFiles(),
-                                vectors.rewrittenDeleteFiles());
+                    if (session.deleteWriter != null) {
+                        DeleteWriteResult deletes = session.deleteWriter.complete();
+                        session.deleteWriter = null;
+                        if (session.deleteMode == DeleteMode.DELETION_VECTOR) {
+                            vectorCount = deletes.deleteFiles().size();
+                        } else {
+                            posDeleteFileCount += deletes.deleteFiles().size();
+                        }
+                        session.op.registerBuiltDeleteFiles(threadId, deletes.deleteFiles(),
+                                deletes.rewrittenDeleteFiles());
                     }
 
                     Long baseSnapshotId = metadata.hasBaseSnapshotId() ? metadata.getBaseSnapshotId() : null;
@@ -153,20 +157,21 @@ public class OlakeArrowIngester extends ArrowIngestServiceGrpc.ArrowIngestServic
                 }
 
                 case DELETION_VECTORS -> {
-                    if (session.deleteMode != DeleteMode.DELETION_VECTOR) {
-                        // Any other mode expresses these as a delete FILE the caller
-                        // writes itself; receiving them here means the two sides disagree
-                        // about the mode, which would silently drop the deletes.
-                        throw new IllegalStateException("received deletion vector rows for thread " + threadId
+                    if (!session.deleteMode.addressesPositions()) {
+                        // Equality mode expresses deletes as delete FILES the caller writes
+                        // itself; receiving positions here means the two sides disagree about
+                        // the mode, which would silently drop the deletes.
+                        throw new IllegalStateException("received superseded row positions for thread " + threadId
                                 + " whose delete mode is " + session.deleteMode.wireName()
-                                + "; only dv encodes deletes server-side");
+                                + "; only pos and dv encode deletes server-side");
                     }
 
-                    if (session.dvWriter == null) {
-                        session.dvWriter = new ArrowDeletionVectorWriter(session.icebergTable, session.dataFilePartitions);
+                    if (session.deleteWriter == null) {
+                        session.deleteWriter = new ArrowDeleteWriter(session.icebergTable, session.dataFilePartitions,
+                                session.deleteMode);
                     }
-                    session.dvWriter.add(metadata.getDeletionVectors(), session.op);
-                    sendResponse(responseObserver, "accepted deletion vector rows for thread " + threadId);
+                    session.deleteWriter.add(metadata.getDeletionVectors(), session.op);
+                    sendResponse(responseObserver, "accepted superseded row positions for thread " + threadId);
                 }
 
                 case UPLOAD_FILE -> {

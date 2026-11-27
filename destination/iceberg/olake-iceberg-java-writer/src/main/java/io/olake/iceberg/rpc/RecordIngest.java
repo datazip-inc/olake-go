@@ -11082,10 +11082,11 @@ public final class RecordIngest {
       FILEPATH(3),
       /**
        * <pre>
-       * Rows superseded by this sync, to be encoded as deletion vectors. Only sent
-       * under delete_mode DELETION_VECTOR, where the caller writes no delete file of
-       * its own: format version 3 rejects Parquet positional deletes, and the
-       * positions are already structured data on the caller's side. Sent incrementally
+       * Rows superseded by this sync, which the server encodes as deletion vectors
+       * (delete_mode DELETION_VECTOR) or Parquet positional delete files
+       * (POSITION). The caller writes no delete file of its own in either mode: only
+       * the server knows the partition spec and partition of a data file an earlier
+       * sync committed, which every delete has to be stamped with. Sent incrementally
        * during the sync so neither side buffers the whole set.
        * </pre>
        *
@@ -11113,10 +11114,11 @@ public final class RecordIngest {
       public static final int FILEPATH_VALUE = 3;
       /**
        * <pre>
-       * Rows superseded by this sync, to be encoded as deletion vectors. Only sent
-       * under delete_mode DELETION_VECTOR, where the caller writes no delete file of
-       * its own: format version 3 rejects Parquet positional deletes, and the
-       * positions are already structured data on the caller's side. Sent incrementally
+       * Rows superseded by this sync, which the server encodes as deletion vectors
+       * (delete_mode DELETION_VECTOR) or Parquet positional delete files
+       * (POSITION). The caller writes no delete file of its own in either mode: only
+       * the server knows the partition spec and partition of a data file an earlier
+       * sync committed, which every delete has to be stamped with. Sent incrementally
        * during the sync so neither side buffers the whole set.
        * </pre>
        *
@@ -16729,7 +16731,7 @@ public final class RecordIngest {
 
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -16738,7 +16740,7 @@ public final class RecordIngest {
       boolean hasDeletionVectors();
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -16747,7 +16749,7 @@ public final class RecordIngest {
       io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch getDeletionVectors();
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -17011,7 +17013,7 @@ public final class RecordIngest {
       private io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch deletionVectors_;
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -17023,7 +17025,7 @@ public final class RecordIngest {
       }
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -17035,7 +17037,7 @@ public final class RecordIngest {
       }
       /**
        * <pre>
-       * DELETION_VECTORS only.
+       * DELETION_VECTORS only: positions for pos or dv mode.
        * </pre>
        *
        * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18247,7 +18249,7 @@ public final class RecordIngest {
             io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch, io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatch.Builder, io.olake.iceberg.rpc.RecordIngest.ArrowPayload.DeletionVectorBatchOrBuilder> deletionVectorsBuilder_;
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18258,7 +18260,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18273,7 +18275,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18293,7 +18295,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18311,7 +18313,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18336,7 +18338,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18353,7 +18355,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18365,7 +18367,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>
@@ -18380,7 +18382,7 @@ public final class RecordIngest {
         }
         /**
          * <pre>
-         * DELETION_VECTORS only.
+         * DELETION_VECTORS only: positions for pos or dv mode.
          * </pre>
          *
          * <code>optional .io.olake.iceberg.rpc.ArrowPayload.DeletionVectorBatch deletion_vectors = 8;</code>

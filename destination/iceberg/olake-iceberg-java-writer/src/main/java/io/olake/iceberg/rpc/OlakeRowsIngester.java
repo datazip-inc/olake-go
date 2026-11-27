@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.olake.iceberg.IcebergUtil;
+import io.olake.iceberg.PartitionEvolution;
 import io.olake.iceberg.SchemaConvertor;
 import io.olake.iceberg.tableIndex.EqualityDeleteMigrator;
 import io.olake.iceberg.rpc.RecordIngest.IcebergPayload;
@@ -133,8 +134,12 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
                             Schema schema = new SchemaConvertor(
                                     declareIdentifierFields ? identifierField : "", schemaMetadata)
                                     .convertToIcebergSchema();
-                            Table icebergTable = loadOrCreateTable(tid, schema, partitionTransforms, deleteMode);
-                            return new IcebergSession(icebergTable, upsert, identifierField, deleteMode);
+                            Table icebergTable = loadOrCreateTable(tid, schema, partitionTransforms, deleteMode, upsert);
+                            IcebergSession created = new IcebergSession(icebergTable, upsert, identifierField, deleteMode);
+                            // the arrow writer sends partition values in partition_regex order, which an evolved
+                            // spec need not keep
+                            created.op.usePartitionValueOrder(partitionTransforms);
+                            return created;
                         });
             } else {
                 // RECORDS / COMMIT / EVOLVE_SCHEMA / REFRESH_TABLE_SCHEMA: the
@@ -252,11 +257,13 @@ public class OlakeRowsIngester extends RecordIngestServiceGrpc.RecordIngestServi
     }
 
     private Table loadOrCreateTable(TableIdentifier tableId, Schema schema, List<Map<String, String>> partitionTransforms,
-            DeleteMode deleteMode) {
+            DeleteMode deleteMode, boolean upsert) {
         java.util.Optional<Table> existing = IcebergUtil.loadIcebergTable(icebergCatalog, tableId);
         if (existing.isPresent()) {
             Table table = existing.get();
             validateOrUpgradeFormatVersion(table, deleteMode);
+            // only equality deletes cannot follow a row into a file of an older spec
+            PartitionEvolution.apply(table, partitionTransforms, !upsert || deleteMode.addressesPositions());
             return table;
         }
 

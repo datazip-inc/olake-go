@@ -34,9 +34,10 @@ type ArrowWriter struct {
 	createdFiles   map[string]*PartitionFiles
 	upsertMode     bool
 	indexThread    *types.StreamIndexThread
-	// deleteMode decides how superseded rows are expressed: under DeletionVector, positions stream to the server as Puffin vectors instead of a delete file.
+	// deleteMode decides how superseded rows are expressed. With a table index (pos, dv) positions stream to the server, which
+	// encodes them as Puffin vectors (dv) or Parquet positional delete files (pos); see deletesOnServer.
 	deleteMode types.UpdateType
-	// pendingVectors buffers positions per data file until a batch is worth sending. Only used under DeleteModeDeletionVector.
+	// pendingVectors buffers positions per data file until a batch is worth sending. Only used when deletesOnServer.
 	pendingVectors map[string]*pendingVector
 	// writtenDataFiles maps each data file this writer produced to its partition values, so a vector superseding a row in one
 	// is stamped with that file's partition. No manifest lists these files before the commit; the server resolves committed ones itself.
@@ -160,8 +161,9 @@ func (w *ArrowWriter) getOrCreateWriter(ctx context.Context, pKey string, values
 		}
 	}
 
-	// Deletion vectors are encoded server-side from streamed positions, so dv mode writes no delete file of its own - see sendPendingVectors.
-	if w.upsertMode && w.deleteMode != types.UpdateTypeDeletionVector {
+	// Deletes the table index addresses are encoded server-side from streamed positions, so pos and dv write no delete file of
+	// their own - see sendPendingVectors.
+	if w.upsertMode && !w.deletesOnServer() {
 		// In positional delete mode the index resolves every row to a location, so
 		// no equality deletes are produced at all.
 		if writer.equalityDeleteWriter == nil && w.indexThread == nil {
@@ -274,7 +276,7 @@ func (w *ArrowWriter) Write(ctx context.Context, records []types.RawRecord) erro
 		}
 
 		if w.upsertMode {
-			if w.deleteMode == types.UpdateTypeDeletionVector {
+			if w.deletesOnServer() {
 				if err := w.queueVectorDeletes(ctx, writer.positionalDeletes, writer.dataWriter.partitionValues); err != nil {
 					return err
 				}
@@ -647,6 +649,14 @@ func (w *ArrowWriter) newRollingWriter(ctx context.Context, arrowSchema arrow.Sc
 	}, nil
 }
 
+// deletesOnServer reports whether superseded rows are sent to the server as positions rather than written here as delete
+// files. Only the server knows the spec and partition of a data file an earlier sync committed, and a delete has to be
+// stamped with the referenced file's own: an update can move a row between partitions, and the table's partition spec may
+// have been evolved since the file was written.
+func (w *ArrowWriter) deletesOnServer() bool {
+	return w.deleteMode == types.UpdateTypeDeletionVector || w.indexThread != nil
+}
+
 // trackDataFile remembers the partition of a data file this writer is about to fill.
 func (w *ArrowWriter) trackDataFile(rw *RollingWriter) {
 	if rw.fileType == fileTypeData {
@@ -677,7 +687,7 @@ func (w *ArrowWriter) queueVectorDeletes(ctx context.Context, deletes []Position
 	return w.sendPendingVectors(ctx)
 }
 
-// sendPendingVectors hands the buffered positions to the server, which folds them into the deletion vectors it publishes at commit.
+// sendPendingVectors hands the buffered positions to the server, which folds them into the deletes it publishes at commit.
 func (w *ArrowWriter) sendPendingVectors(ctx context.Context) error {
 	if w.pendingVectorCount == 0 {
 		return nil
@@ -711,7 +721,7 @@ func (w *ArrowWriter) sendPendingVectors(ctx context.Context) error {
 	defer cancel()
 
 	if _, err := w.server.SendClientRequest(reqCtx, request); err != nil {
-		return fmt.Errorf("failed to send deletion vector rows: %s", err)
+		return fmt.Errorf("failed to send superseded row positions: %s", err)
 	}
 
 	w.pendingVectors = make(map[string]*pendingVector)

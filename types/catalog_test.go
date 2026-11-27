@@ -2248,3 +2248,50 @@ func TestToLegacyStreamMetadataUpdateType(t *testing.T) {
 		})
 	}
 }
+
+// A partition_regex change evolves an Iceberg table's partition spec in place when every delete the stream writes
+// follows a row into its file (pos, dv) or it writes none (append); equality deletes need the table rebuilt.
+func TestGetStreamsDeltaPartitionEvolution(t *testing.T) {
+	catalog := func(regex string, appendMode bool, updateType UpdateType, normalization bool) *Catalog {
+		return &Catalog{
+			Streams: []*ConfiguredStream{{Stream: &Stream{Name: "users", Namespace: "public"}}},
+			SelectedStreams: map[string][]StreamMetadata{"public": {{
+				StreamName: "users", PartitionRegex: regex, AppendMode: new(appendMode),
+				UpdateType: new(string(updateType)), Normalization: new(normalization),
+			}}},
+		}
+	}
+
+	testCases := []struct {
+		name            string
+		destinationType DestinationType
+		appendMode      bool
+		updateType      UpdateType
+		alsoNormalize   bool // a second change that needs a rebuild on its own
+		wantDelta       bool
+	}{
+		{name: "iceberg pos evolves in place", destinationType: Iceberg, updateType: UpdateTypePosition},
+		{name: "iceberg dv evolves in place", destinationType: Iceberg, updateType: UpdateTypeDeletionVector},
+		{name: "iceberg append evolves in place", destinationType: Iceberg, appendMode: true, updateType: UpdateTypeEquality},
+		{name: "iceberg eq upsert is rebuilt", destinationType: Iceberg, updateType: UpdateTypeEquality, wantDelta: true},
+		{name: "parquet is rebuilt", destinationType: Parquet, updateType: UpdateTypePosition, wantDelta: true},
+		{name: "unknown destination is rebuilt", updateType: UpdateTypePosition, wantDelta: true},
+		{name: "another change still rebuilds", destinationType: Iceberg, updateType: UpdateTypePosition, alsoNormalize: true, wantDelta: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			oldCatalog := catalog("/{created_at,day}", tc.appendMode, tc.updateType, true)
+			newCatalog := catalog("/{created_at,month}", tc.appendMode, tc.updateType, !tc.alsoNormalize)
+
+			delta := GetStreamsDelta(oldCatalog, newCatalog, tc.destinationType)
+
+			if tc.wantDelta {
+				require.Len(t, delta.Streams, 1)
+				assert.Equal(t, "/{created_at,month}", delta.SelectedStreams["public"][0].PartitionRegex)
+				return
+			}
+			assert.Empty(t, delta.Streams)
+			assert.Empty(t, delta.SelectedStreams)
+		})
+	}
+}

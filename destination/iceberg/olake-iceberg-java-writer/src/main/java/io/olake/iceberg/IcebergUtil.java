@@ -105,6 +105,7 @@ public class IcebergUtil {
       return icebergCatalog.buildTable(tableIdentifier, schema)
               .withProperty(FORMAT_VERSION, String.valueOf(formatVersion))
               .withProperty(DEFAULT_FILE_FORMAT, writeFormat.toLowerCase(Locale.ENGLISH))
+              .withProperty(PartitionEvolution.APPLIED_PROPERTY, "")
               .withSortOrder(IcebergUtil.getIdentifierFieldsAsSortOrder(schema))
               .create();
     } else {
@@ -165,6 +166,8 @@ public class IcebergUtil {
       return icebergCatalog.buildTable(tableIdentifier, schema)
               .withProperty(FORMAT_VERSION, String.valueOf(formatVersion))
               .withProperty(DEFAULT_FILE_FORMAT, writeFormat.toLowerCase(Locale.ENGLISH))
+              .withProperty(PartitionEvolution.APPLIED_PROPERTY,
+                  PartitionEvolution.applied(PartitionEvolution.requested(partitionTransforms)))
               .withPartitionSpec(specBuilder.build())
               .withSortOrder(IcebergUtil.getIdentifierFieldsAsSortOrder(schema))
               .create();

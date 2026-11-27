@@ -29,6 +29,7 @@ import org.apache.iceberg.FileMetadata;
 import org.apache.iceberg.Metrics;
 import org.apache.iceberg.MetricsConfig;
 import org.apache.iceberg.PartitionData;
+import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.RowDelta;
 import org.apache.iceberg.Schema;
@@ -46,6 +47,7 @@ import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.parquet.ParquetUtil;
 import org.apache.iceberg.util.Pair;
+import io.olake.iceberg.PartitionEvolution;
 import io.olake.iceberg.tableIndex.TableIndexScanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,6 +81,9 @@ public class IcebergTableOperator {
    * via WriteResult.rewrittenDeleteFiles().
    */
   ArrayList<DeleteFile> rewrittenDeleteFiles = new ArrayList<>();
+
+  // partition_regex fields in the order the arrow writer sends partition values; null until set
+  private List<PartitionEvolution.Field> partitionValueOrder;
 
   public IcebergTableOperator(boolean upsert_records) {
     this(upsert_records, DeleteMode.EQUALITY, null);
@@ -646,6 +651,10 @@ public class IcebergTableOperator {
       * Public because the arrow deletion-vector path needs the partition of the data
       * files this same commit is adding: they are not in table metadata yet, so
       * {@code DeletionVectorConverter} cannot resolve them by scanning.
+      *
+      * <p>The caller sends one value per partition_regex entry, in partition_regex order. A spec
+      * OLake evolved keeps its surviving fields first and appends new ones, so values are matched
+      * to spec fields by source column and transform once that order is known.
       */
      public PartitionData partitionDataFromTypedValues(PartitionSpec spec,
                List<ArrowPayload.FileMetadata.PartitionValue> partitionValues) {
@@ -654,24 +663,51 @@ public class IcebergTableOperator {
                return partitionData;
           }
 
-          for (int i = 0; i < partitionValues.size() && i < spec.fields().size(); i++) {
-               ArrowPayload.FileMetadata.PartitionValue protoValue = partitionValues.get(i);
-               Object value = switch (protoValue.getValueCase()) {
-                    case INT_VALUE -> protoValue.getIntValue();
-                    case LONG_VALUE -> protoValue.getLongValue();
-                    case FLOAT_VALUE -> protoValue.getFloatValue();
-                    case DOUBLE_VALUE -> protoValue.getDoubleValue();
-                    case STRING_VALUE -> protoValue.getStringValue();
-                    case BOOL_VALUE -> protoValue.getBoolValue();
-                    case BYTES_VALUE -> protoValue.getBytesValue().asReadOnlyByteBuffer();
-                    case DECIMAL_VALUE -> new BigDecimal(protoValue.getDecimalValue());
-                    case VALUE_NOT_SET -> null;
-               };
-               partitionData.set(i, value);
+          if (partitionValueOrder == null || partitionValueOrder.isEmpty()) {
+               for (int i = 0; i < partitionValues.size() && i < spec.fields().size(); i++) {
+                    partitionData.set(i, typedValue(partitionValues.get(i)));
+               }
+               return partitionData;
           }
 
-         return partitionData;
-  }
+          List<PartitionField> fields = spec.fields();
+          for (int j = 0; j < fields.size(); j++) {
+               PartitionField field = fields.get(j);
+               if (field.transform().isVoid()) {
+                    continue; // a v1 table's removed field: always null
+               }
+               PartitionEvolution.Field wanted = new PartitionEvolution.Field(
+                         spec.schema().findColumnName(field.sourceId()), field.transform().toString());
+               int i = partitionValueOrder.indexOf(wanted);
+               if (i < 0 || i >= partitionValues.size()) {
+                    throw new IllegalStateException(String.format(
+                              "partition field %s of spec %d is not in the stream's partition_regex [%s], so no value "
+                                        + "was sent for it; set partition_regex to match the table's partitioning",
+                              wanted, spec.specId(), PartitionEvolution.applied(partitionValueOrder)));
+               }
+               partitionData.set(j, typedValue(partitionValues.get(i)));
+          }
+          return partitionData;
+     }
+
+     /** Order the arrow writer sends partition values in: the stream's partition_regex. */
+     public void usePartitionValueOrder(List<java.util.Map<String, String>> partitionTransforms) {
+          this.partitionValueOrder = PartitionEvolution.requested(partitionTransforms);
+     }
+
+     private static Object typedValue(ArrowPayload.FileMetadata.PartitionValue protoValue) {
+          return switch (protoValue.getValueCase()) {
+               case INT_VALUE -> protoValue.getIntValue();
+               case LONG_VALUE -> protoValue.getLongValue();
+               case FLOAT_VALUE -> protoValue.getFloatValue();
+               case DOUBLE_VALUE -> protoValue.getDoubleValue();
+               case STRING_VALUE -> protoValue.getStringValue();
+               case BOOL_VALUE -> protoValue.getBoolValue();
+               case BYTES_VALUE -> protoValue.getBytesValue().asReadOnlyByteBuffer();
+               case DECIMAL_VALUE -> new BigDecimal(protoValue.getDecimalValue());
+               case VALUE_NOT_SET -> null;
+          };
+     }
 
   private void updateJsonState(Table table, UpdateProperties updateProperties, String threadId, String payload) {
       try {
