@@ -190,11 +190,11 @@ Each key starts with its category:
 | `properties` | table properties | compression codec per column |
 | `olake_2pc` | the `olake_2pc` property: its fields, `dedup_inserts`, number of full-refresh commits | the same, from `metadata.json` |
 | `staging` | | objects left under `_olake_2pc/` |
-| `snapshots` | number of snapshots, and of each kind of commit by its record counts | |
-| `totals` | the current snapshot's record and delete totals | |
-| `files` | data and delete files per partition and kind | data files per partition folder |
+| `snapshots` | number of snapshots, and of each commit by its record and position delete counts | |
+| `totals` | the current snapshot's record and position delete totals | |
+| `files` | data and position delete files per partition | data files per partition folder |
 | `data_records` | records per partition | records per partition folder |
-| `delete_records` | delete records per partition, kind, format and equality columns | |
+| `delete_records` | position delete records per partition and format | |
 | `column_stats` | null count per column | null count per column |
 | `file_schema` | | physical type, logical type and repetition per column |
 
