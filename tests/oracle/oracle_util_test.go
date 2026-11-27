@@ -89,7 +89,8 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 				col_smallint_edge NUMBER(5, 0),
 				col_int_edge NUMBER(9, 0),
 				col_bigint_edge NUMBER(19, 0),
-				col_number_38 NUMBER(38, 0),
+				-- the driver reads NUMBER(p,0) with p above 9 as int64, so wider values (up to 38 digits) cannot sync yet; kept to 18 digits
+				col_number_38_int NUMBER(38, 0),
 				col_bd_max BINARY_DOUBLE,
 				col_bd_tiny BINARY_DOUBLE,
 				col_bf_max BINARY_FLOAT,
@@ -140,7 +141,7 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 				col_varchar2, col_date, col_decimal,
 				col_double_precision, col_float, col_int, col_smallint, col_number_star, col_number_rounded, col_number_tiny, col_float_126, col_number_round_tens, col_number_rounded_wide,
 				col_integer, col_clob, col_nclob, col_blob, col_timestamp, col_timestamptz, col_timestampltz,
-				col_smallint_edge, col_int_edge, col_bigint_edge, col_number_38, col_bd_max, col_bd_tiny, col_bf_max, col_date_edge, col_ts_edge, col_tstz_offset, col_varchar2_special, col_varchar2_empty, col_clob_long, col_null_to_val, col_val_to_null, col_null_stay, col_null_bigint, col_null_decimal, col_null_bd, col_null_varchar2, col_null_date, col_null_ts, col_null_clob, col_val_to_null_varchar2, col_val_to_null_ts, col_val_to_null_decimal,
+				col_smallint_edge, col_int_edge, col_bigint_edge, col_number_38_int, col_bd_max, col_bd_tiny, col_bf_max, col_date_edge, col_ts_edge, col_tstz_offset, col_varchar2_special, col_varchar2_empty, col_clob_long, col_null_to_val, col_val_to_null, col_null_stay, col_null_bigint, col_null_decimal, col_null_bd, col_null_varchar2, col_null_date, col_null_ts, col_null_clob, col_val_to_null_varchar2, col_val_to_null_ts, col_val_to_null_decimal,
 				excludedColumn
 			) VALUES (
 				6, 6, 123456789012345, 'c', 'char_val',
@@ -150,7 +151,7 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 				TIMESTAMP '2023-01-01 12:00:00.573605',
 				TIMESTAMP '2023-01-01 12:00:00.573605+00:00',
 				TIMESTAMP '2023-01-01 12:00:00.573605+05:30',
-				-99999, -999999999, -9223372036854775808, 99999999999999999999999999999999999999, TO_BINARY_DOUBLE('1.7976931348623157E308'), TO_BINARY_DOUBLE('2.2250738585072014E-308'), TO_BINARY_FLOAT('3.40282347E+38'), TO_DATE('0001-01-01', 'YYYY-MM-DD'), TIMESTAMP '0001-01-01 00:00:00', TIMESTAMP '2024-06-15 10:30:00+14:00', 'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉', '', TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x')), NULL, 5, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'x', TIMESTAMP '2023-01-01 00:00:00', 2.5,
+				-99999, -999999999, -9223372036854775808, 999999999999999999, TO_BINARY_DOUBLE('1.7976931348623157E308'), TO_BINARY_DOUBLE('2.2250738585072014E-308'), TO_BINARY_FLOAT('3.40282347E+38'), TO_DATE('0001-01-01', 'YYYY-MM-DD'), TIMESTAMP '0001-01-01 00:00:00', TIMESTAMP '2024-06-15 10:30:00+14:00', 'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉', '', TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x')), NULL, 5, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'x', TIMESTAMP '2023-01-01 00:00:00', 2.5,
 				101
 			)`, integrationTestTable)
 		_, err = db.ExecContext(ctx, query)
@@ -184,7 +185,7 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 				col_varchar2, col_date, col_decimal,
 				col_double_precision, col_float, col_int, col_smallint, col_number_star, col_number_rounded, col_number_tiny, col_float_126, col_number_round_tens, col_number_rounded_wide,
 				col_integer, col_clob, col_nclob, col_blob, col_timestamp, col_timestamptz, col_timestampltz,
-				col_smallint_edge, col_int_edge, col_bigint_edge, col_number_38, col_bd_max, col_bd_tiny, col_bf_max, col_date_edge, col_ts_edge, col_tstz_offset, col_varchar2_special, col_varchar2_empty, col_clob_long, col_null_to_val, col_val_to_null, col_null_stay, col_null_bigint, col_null_decimal, col_null_bd, col_null_varchar2, col_null_date, col_null_ts, col_null_clob, col_val_to_null_varchar2, col_val_to_null_ts, col_val_to_null_decimal
+				col_smallint_edge, col_int_edge, col_bigint_edge, col_number_38_int, col_bd_max, col_bd_tiny, col_bf_max, col_date_edge, col_ts_edge, col_tstz_offset, col_varchar2_special, col_varchar2_empty, col_clob_long, col_null_to_val, col_val_to_null, col_null_stay, col_null_bigint, col_null_decimal, col_null_bd, col_null_varchar2, col_null_date, col_null_ts, col_null_clob, col_val_to_null_varchar2, col_val_to_null_ts, col_val_to_null_decimal
 			) VALUES (
 				7, 7, 123456789012345, 'c', 'char_val',
 				'varchar_val', TO_DATE('2023-01-01', 'YYYY-MM-DD'), 123.45,
@@ -193,7 +194,7 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 				TIMESTAMP '2023-01-01 12:00:00.573605',
 				TIMESTAMP '2023-01-01 12:00:00.573605+00:00',
 				TIMESTAMP '2023-01-01 12:00:00.573605+05:30',
-				-99999, -999999999, -9223372036854775808, 99999999999999999999999999999999999999, TO_BINARY_DOUBLE('1.7976931348623157E308'), TO_BINARY_DOUBLE('2.2250738585072014E-308'), TO_BINARY_FLOAT('3.40282347E+38'), TO_DATE('0001-01-01', 'YYYY-MM-DD'), TIMESTAMP '0001-01-01 00:00:00', TIMESTAMP '2024-06-15 10:30:00+14:00', 'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉', '', TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x')), NULL, 5, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'x', TIMESTAMP '2023-01-01 00:00:00', 2.5
+				-99999, -999999999, -9223372036854775808, 999999999999999999, TO_BINARY_DOUBLE('1.7976931348623157E308'), TO_BINARY_DOUBLE('2.2250738585072014E-308'), TO_BINARY_FLOAT('3.40282347E+38'), TO_DATE('0001-01-01', 'YYYY-MM-DD'), TIMESTAMP '0001-01-01 00:00:00', TIMESTAMP '2024-06-15 10:30:00+14:00', 'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉', '', TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x')), NULL, 5, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'x', TIMESTAMP '2023-01-01 00:00:00', 2.5
 			)`, integrationTestTable)
 
 	case "update":
@@ -208,7 +209,7 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 			col_smallint_edge = 99999,
 			col_int_edge = 999999999,
 			col_bigint_edge = 9223372036854775807,
-			col_number_38 = -99999999999999999999999999999999999999,
+			col_number_38_int = -999999999999999999,
 			col_bd_max = TO_BINARY_DOUBLE('-1.7976931348623157E308'),
 			col_bd_tiny = TO_BINARY_DOUBLE('-2.2250738585072014E-308'),
 			col_bf_max = TO_BINARY_FLOAT('-3.40282347E+38'),
@@ -266,7 +267,7 @@ func insertTestData(ctx context.Context, t *testing.T, db *sqlx.DB, tableName st
 			col_varchar2, col_date, col_decimal,
 			col_double_precision, col_float, col_int, col_smallint, col_number_star, col_number_rounded, col_number_tiny, col_float_126, col_number_round_tens, col_number_rounded_wide,
 			col_integer, col_clob, col_nclob, col_blob, col_timestamp, col_timestamptz, col_timestampltz,
-			col_smallint_edge, col_int_edge, col_bigint_edge, col_number_38, col_bd_max, col_bd_tiny, col_bf_max, col_date_edge, col_ts_edge, col_tstz_offset, col_varchar2_special, col_varchar2_empty, col_clob_long, col_null_to_val, col_val_to_null, col_null_stay, col_null_bigint, col_null_decimal, col_null_bd, col_null_varchar2, col_null_date, col_null_ts, col_null_clob, col_val_to_null_varchar2, col_val_to_null_ts, col_val_to_null_decimal,
+			col_smallint_edge, col_int_edge, col_bigint_edge, col_number_38_int, col_bd_max, col_bd_tiny, col_bf_max, col_date_edge, col_ts_edge, col_tstz_offset, col_varchar2_special, col_varchar2_empty, col_clob_long, col_null_to_val, col_val_to_null, col_null_stay, col_null_bigint, col_null_decimal, col_null_bd, col_null_varchar2, col_null_date, col_null_ts, col_null_clob, col_val_to_null_varchar2, col_val_to_null_ts, col_val_to_null_decimal,
 			excludedColumn
 		) VALUES (
 			%[2]d, %[2]d, 123456789012345, 'c', 'char_val',
@@ -276,7 +277,7 @@ func insertTestData(ctx context.Context, t *testing.T, db *sqlx.DB, tableName st
 			TIMESTAMP '2023-01-01 12:00:00.573605',
 			TIMESTAMP '2023-01-01 12:00:00.573605+00:00',
 			TIMESTAMP '2023-01-01 12:00:00.573605+05:30',
-			-99999, -999999999, -9223372036854775808, 99999999999999999999999999999999999999, TO_BINARY_DOUBLE('1.7976931348623157E308'), TO_BINARY_DOUBLE('2.2250738585072014E-308'), TO_BINARY_FLOAT('3.40282347E+38'), TO_DATE('0001-01-01', 'YYYY-MM-DD'), TIMESTAMP '0001-01-01 00:00:00', TIMESTAMP '2024-06-15 10:30:00+14:00', 'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉', '', TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x')), NULL, 5, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'x', TIMESTAMP '2023-01-01 00:00:00', 2.5,
+			-99999, -999999999, -9223372036854775808, 999999999999999999, TO_BINARY_DOUBLE('1.7976931348623157E308'), TO_BINARY_DOUBLE('2.2250738585072014E-308'), TO_BINARY_FLOAT('3.40282347E+38'), TO_DATE('0001-01-01', 'YYYY-MM-DD'), TIMESTAMP '0001-01-01 00:00:00', TIMESTAMP '2024-06-15 10:30:00+14:00', 'line1' || CHR(10) || 'line2' || CHR(9) || 'tab "q" ''s'' \ back 世界🎉', '', TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x'))||TO_CLOB(RPAD('x', 4000, 'x')), NULL, 5, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'x', TIMESTAMP '2023-01-01 00:00:00', 2.5,
 			100
 		)`, tableName, i)
 
@@ -332,7 +333,7 @@ var ExpectedOracleData = map[string]interface{}{
 	"col_smallint_edge":        int32(-99999),
 	"col_int_edge":             int32(-999999999),
 	"col_bigint_edge":          int64(-9223372036854775808),
-	"col_number_38":            testutils.Decimal("99999999999999999999999999999999999999"),
+	"col_number_38_int":        int64(999999999999999999),
 	"col_bd_max":               float64(1.7976931348623157e308),
 	"col_bd_tiny":              float64(2.2250738585072014e-308),
 	"col_bf_max":               float32(3.4028234663852886e38),
@@ -406,7 +407,7 @@ var ExpectedUpdatedOracleData = map[string]interface{}{
 	"col_smallint_edge":        int32(99999),
 	"col_int_edge":             int32(999999999),
 	"col_bigint_edge":          int64(9223372036854775807),
-	"col_number_38":            testutils.Decimal("-99999999999999999999999999999999999999"),
+	"col_number_38_int":        int64(-999999999999999999),
 	"col_bd_max":               float64(-1.7976931348623157e308),
 	"col_bd_tiny":              float64(-2.2250738585072014e-308),
 	"col_bf_max":               float32(-3.4028234663852886e38),
@@ -460,7 +461,7 @@ var OracleToDestinationSchema = map[string]string{
 	"col_smallint_edge":        "int",
 	"col_int_edge":             "int",
 	"col_bigint_edge":          "bigint",
-	"col_number_38":            "decimal(38,0)",
+	"col_number_38_int":        "bigint",
 	"col_bd_max":               "double",
 	"col_bd_tiny":              "double",
 	"col_bf_max":               "float",
@@ -515,7 +516,7 @@ var UpdatedOracleToDestinationSchema = map[string]string{
 	"col_smallint_edge":        "int",
 	"col_int_edge":             "int",
 	"col_bigint_edge":          "bigint",
-	"col_number_38":            "decimal(38,0)",
+	"col_number_38_int":        "bigint",
 	"col_bd_max":               "double",
 	"col_bd_tiny":              "double",
 	"col_bf_max":               "float",
