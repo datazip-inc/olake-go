@@ -38,6 +38,8 @@ const (
 	defaultService = "CLI"
 	// maxUIConfigSize bounds the read: the file is written by another process.
 	maxEventPropsFileSize = 1 << 20 // 1 MiB
+	// aiSkillsEnv is set to true by the OLake agent skills, so runs an agent drives can be counted.
+	aiSkillsEnv = "OLAKE_AI_SKILLS"
 )
 
 // PropsFiles returns optional job-dir files S3 mode should fetch so Init can read them.
@@ -62,6 +64,8 @@ type Telemetry struct {
 	ipAddress    string
 	locationInfo *LocationInfo
 	userID       string
+	// aiSkills reports whether the OLake agent skills launched this run (OLAKE_AI_SKILLS).
+	aiSkills bool
 	// eventProps is the telemetry.json object merged onto every event last, so caller keys override the CLI defaults.
 	eventProps map[string]interface{}
 }
@@ -114,6 +118,7 @@ func Init() {
 			httpClient: &http.Client{Timeout: 5 * time.Second},
 			userID:     getUserID(eventProps),
 			service:    getService(eventProps),
+			aiSkills:   aiSkillsRun(),
 			eventProps: eventProps,
 			platform: platformInfo{
 				OS:           runtime.GOOS,
@@ -435,6 +440,7 @@ func (t *Telemetry) sendEvent(event string, props map[string]interface{}) error 
 		"distinct_id":         t.userID,
 		"time":                time.Now().Unix(),
 		"event_original_name": eventName,
+		"ai_skills":           t.aiSkills,
 	}
 
 	for key, value := range properties {
@@ -494,6 +500,12 @@ func getOutboundIP() string {
 	}
 
 	return string(ip)
+}
+
+// aiSkillsRun reports whether OLAKE_AI_SKILLS is true; unset or unparsable is false.
+func aiSkillsRun() bool {
+	aiSkills, _ := strconv.ParseBool(os.Getenv(aiSkillsEnv))
+	return aiSkills
 }
 
 // getService returns telemetry.json's service, defaulting to the CLI.

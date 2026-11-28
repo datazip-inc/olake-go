@@ -108,7 +108,7 @@ func TestSendEventCommonProperties(t *testing.T) {
 
 	for _, key := range []string{
 		"os", "arch", "olake_version", "num_cpu", "service", "ip_address",
-		"location", "distinct_id", "time", "event_original_name",
+		"location", "distinct_id", "time", "event_original_name", "ai_skills",
 	} {
 		assert.Contains(t, props, key, "common property %q is missing", key)
 	}
@@ -1029,6 +1029,30 @@ func TestSendEventCallerContext(t *testing.T) {
 			for key, want := range tc.expected {
 				assert.Equal(t, want, events[0][key], "property %q", key)
 			}
+		})
+	}
+}
+
+func TestAISkillsRun(t *testing.T) {
+	testCases := []struct {
+		name     string
+		value    string
+		expected bool
+	}{
+		// the point of the variable: a run started by the agent skills says so
+		{name: "true", value: "true", expected: true},
+		{name: "1", value: "1", expected: true},
+		// a plain CLI run never sets it
+		{name: "unset", value: "", expected: false},
+		{name: "false", value: "false", expected: false},
+		// a typo must not count a run as agent-driven
+		{name: "unparsable", value: "yes", expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(aiSkillsEnv, tc.value)
+			assert.Equal(t, tc.expected, aiSkillsRun())
 		})
 	}
 }
