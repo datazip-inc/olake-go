@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/datazip-inc/olake/utils/errs"
+	"github.com/datazip-inc/olake/utils/logger"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 // Codes for conditions this package detects itself, where the error alone cannot say the address
@@ -23,12 +26,14 @@ const (
 )
 
 type SSHConfig struct {
-	Host       string `json:"host,omitempty"`
-	Port       int    `json:"port,omitempty"`
-	Username   string `json:"username,omitempty"`
-	PrivateKey string `json:"private_key,omitempty"`
-	Passphrase string `json:"passphrase,omitempty"`
-	Password   string `json:"password,omitempty"`
+	Host           string `json:"host,omitempty"`
+	Port           int    `json:"port,omitempty"`
+	Username       string `json:"username,omitempty"`
+	PrivateKey     string `json:"private_key,omitempty"`
+	Passphrase     string `json:"passphrase,omitempty"`
+	Password       string `json:"password,omitempty"`
+	KnownHostsFile string `json:"known_hosts_file,omitempty"`
+	HostPublicKey  string `json:"host_public_key,omitempty"`
 }
 
 func (c *SSHConfig) Validate() error {
@@ -57,6 +62,7 @@ func (c *SSHConfig) SetupSSHConnection() (*ssh.Client, error) {
 		return nil, errs.Precondition(errs.ConfigInvalid, codeSSHConfigInvalid,
 			fmt.Errorf("failed to validate ssh config: %w", err))
 	}
+
 	var authMethods []ssh.AuthMethod
 
 	if c.Password != "" {
@@ -72,19 +78,48 @@ func (c *SSHConfig) SetupSSHConnection() (*ssh.Client, error) {
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
 
+	var hostKeyCallback ssh.HostKeyCallback
+
+	if c.KnownHostsFile != "" && c.HostPublicKey != "" {
+		return nil, fmt.Errorf("configure either known_hosts_file or host_public_key, not both")
+	}
+
+	if c.KnownHostsFile != "" {
+		if _, err := os.Stat(c.KnownHostsFile); err != nil {
+			return nil, fmt.Errorf("known_hosts file unavailable: %w", err)
+		}
+
+		hostKeyCallback, err = knownhosts.New(c.KnownHostsFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load known_hosts file: %w", err)
+		}
+	} else if c.HostPublicKey != "" {
+		expectedKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(c.HostPublicKey))
+		if err != nil {
+			return nil, fmt.Errorf("invalid SSH host public key: %w", err)
+		}
+
+		hostKeyCallback = func(_ string, _ net.Addr, presentedKey ssh.PublicKey) error {
+			if !bytes.Equal(expectedKey.Marshal(), presentedKey.Marshal()) {
+				return fmt.Errorf("SSH bastion host key mismatch")
+			}
+			return nil
+		}
+	} else {
+		logger.Warnf("SSH host-key verification is disabled for bastion %s", c.Host)
+		hostKeyCallback = ssh.InsecureIgnoreHostKey()
+	}
+
 	sshCfg := &ssh.ClientConfig{
-		User: c.Username,
-		Auth: authMethods,
-		// Allows everyone to connect to the server without verifying the host key
-		// TODO: Add proper host key verification
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106
+		User:            c.Username,
+		Auth:            authMethods,
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         30 * time.Second,
 	}
 
 	bastionAddr := net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 	sshClient, err := ssh.Dial("tcp", bastionAddr, sshCfg)
 	if err != nil {
-		// Splits ssh_tunnel_failed by what the dial error hit.
 		code := codeSSHDialFailed
 		switch errs.Standard(err).Category {
 		case errs.DNSResolutionFailed:
