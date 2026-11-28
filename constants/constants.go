@@ -117,7 +117,20 @@ var DefaultAppendModeDrivers = []DriverType{S3, Kafka}
 var RelationalDrivers = []DriverType{Postgres, MySQL, Oracle, DB2, MSSQL}
 
 var ParallelCDCDrivers = []DriverType{MongoDB, MSSQL}
+
+// ErrNonRetryable marks errors that are not retried inside the current process.
+// The process exits with ExitCodeFailure.
 var ErrNonRetryable = fmt.Errorf("failed with non retryable error")
+
+// ErrRestartRequired marks errors a fresh run can fix; they are not retried inside the current
+// process, and the process exits with ExitCodeRestartRequired.
+var ErrRestartRequired = fmt.Errorf("stopped safely, restart required")
+
+const (
+	ExitCodeFailure         = 1
+	ExitCodeRestartRequired = 3
+)
+
 var ErrGlobalContextGroup = fmt.Errorf("global context group error")
 
 // DriversRequiringIncrementalFormatter are drivers that require special formatting for incremental value

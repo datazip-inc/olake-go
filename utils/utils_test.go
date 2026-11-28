@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -299,6 +301,51 @@ func TestUpdateMethodType(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.expected, UpdateMethodType(tc.in))
+		})
+	}
+}
+
+func TestExitCode(t *testing.T) {
+	testCases := []struct {
+		name     string
+		err      error
+		expected int
+	}{
+		{name: "plain error", err: errors.New("connection reset by peer"), expected: constants.ExitCodeRestartRequired},
+		{name: "non retryable", err: fmt.Errorf("%w: publication missing", constants.ErrNonRetryable), expected: constants.ExitCodeFailure},
+		{name: "non retryable wrapped by an outer layer", err: fmt.Errorf("post cdc error: %w", fmt.Errorf("%w: LSN not updated", constants.ErrNonRetryable)), expected: constants.ExitCodeFailure},
+		{name: "restart required", err: fmt.Errorf("%w: partition loss", constants.ErrRestartRequired), expected: constants.ExitCodeRestartRequired},
+		{name: "restart required wrapped by an outer layer", err: fmt.Errorf("reader[0]: %w", fmt.Errorf("%w: partition loss", constants.ErrRestartRequired)), expected: constants.ExitCodeRestartRequired},
+		{name: "nil error", err: nil, expected: 0},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, ExitCode(tc.err))
+		})
+	}
+}
+
+// TestRetryOnBackoffMarkers checks how many times RetryOnBackoff runs a function for each kind of error.
+func TestRetryOnBackoffMarkers(t *testing.T) {
+	testCases := []struct {
+		name          string
+		err           error
+		expectedCalls int
+	}{
+		{name: "plain error is retried", err: errors.New("connection reset by peer"), expectedCalls: 3},
+		{name: "non retryable is not retried", err: fmt.Errorf("%w: publication missing", constants.ErrNonRetryable), expectedCalls: 1},
+		{name: "restart required is not retried", err: fmt.Errorf("%w: partition loss", constants.ErrRestartRequired), expectedCalls: 1},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			err := RetryOnBackoff(context.Background(), 2, time.Millisecond, func(_ context.Context) error {
+				calls++
+				return tc.err
+			})
+			assert.Error(t, err)
+			assert.Equal(t, tc.expectedCalls, calls)
 		})
 	}
 }

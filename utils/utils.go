@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 
 	//nolint:gosec // G401: md5 used for non-crypto hashing
 	"crypto/md5"
@@ -604,7 +605,8 @@ func RetryOnBackoff(ctx context.Context, attempts int, sleep time.Duration, f fu
 		}
 
 		// check if error is non retryable
-		if strings.Contains(err.Error(), constants.ErrNonRetryable.Error()) {
+		if strings.Contains(err.Error(), constants.ErrNonRetryable.Error()) ||
+			errors.Is(err, constants.ErrRestartRequired) {
 			return err
 		}
 
@@ -620,6 +622,18 @@ func RetryOnBackoff(ctx context.Context, attempts int, sleep time.Duration, f fu
 	}
 
 	return err
+}
+
+// ExitCode returns 0 for nil, ExitCodeFailure for errors marked with ErrNonRetryable, and ExitCodeRestartRequired for every other error.
+func ExitCode(err error) int {
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, constants.ErrNonRetryable):
+		return constants.ExitCodeFailure
+	default:
+		return constants.ExitCodeRestartRequired
+	}
 }
 
 // ExtractColumnName extracts a column name from regex capture groups.
