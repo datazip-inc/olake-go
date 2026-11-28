@@ -74,4 +74,15 @@ var ServiceCodeCategories = map[string]errs.Category{
 	"MissingRegion":         errs.ConfigInvalid, // no region configured or inferable
 	"MissingEndpoint":       errs.ConfigInvalid,
 	"RequestCanceled":       errs.Canceled,
+
+	// Signing failures under other names: Glue and STS speak the JSON protocol, and the host
+	// clock is part of every signature.
+	"InvalidSignatureException": errs.AuthFailed, // the JSON-protocol SignatureDoesNotMatch
+	"RequestTimeTooSkewed":      errs.AuthFailed,
+
+	// S3-compatible services that answer with their own codes.
+	"InvalidSecretKey":               errs.AuthFailed,        // Ceph RGW: the secret key does not verify
+	"XMinioStorageFull":              errs.ResourceExhausted, // MinIO: drives below the free-space threshold
+	"XMinioAdminBucketQuotaExceeded": errs.ResourceExhausted, // MinIO: bucket quota reached
+	"QuotaExceeded":                  errs.ResourceExhausted, // Ceph RGW: user or bucket quota reached
 }

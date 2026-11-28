@@ -36,10 +36,11 @@ func DefaultOptions() StoreOptions {
 		dir = filepath.Join(wd, constants.DefaultDirName)
 	}
 
-	cacheSize, err := strconv.Atoi(os.Getenv(constants.IndexDBCacheSizePerStream))
-	if err != nil {
-		logger.Warnf("failed to parse index db cache size (using default %d MB): %s", constants.DefaultCacheSize, err)
-		cacheSize = constants.DefaultCacheSize
+	// cache size env is in MB, pebble expects bytes
+	cacheSizeMB, err := strconv.Atoi(os.Getenv(constants.IndexDBCacheSizePerStream))
+	if err != nil || cacheSizeMB <= 0 {
+		logger.Warnf("invalid index db cache size %q (using default %d MB): %v", os.Getenv(constants.IndexDBCacheSizePerStream), constants.DefaultCacheSizeMB, err)
+		cacheSizeMB = constants.DefaultCacheSizeMB
 	}
 
 	maxOpenFiles, err := strconv.Atoi(os.Getenv(constants.MaxOpenFilesPerStream))
@@ -50,7 +51,7 @@ func DefaultOptions() StoreOptions {
 
 	return StoreOptions{
 		Dir:          dir,
-		CacheSize:    int64(cacheSize),
+		CacheSize:    int64(cacheSizeMB) * 1024 * 1024,
 		MemTableSize: constants.DefaultMemTableSize,
 		MaxOpenFiles: maxOpenFiles,
 	}

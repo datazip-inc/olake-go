@@ -86,7 +86,7 @@ type Config struct {
 	// Required by BigLake for request routing/billing (sent as the x-goog-user-project header).
 	GCPProjectID string `json:"gcp_project_id,omitempty"`
 
-	// Horizon
+	// Horizon and BigLake (sent as the X-Iceberg-Access-Delegation header).
 	RESTAccessDelegation string `json:"rest_access_delegation,omitempty"`
 
 	UseArrowWrites bool `json:"arrow_writes,omitempty"`
@@ -94,7 +94,7 @@ type Config struct {
 
 func (c *Config) Validate() error {
 	if c.IcebergS3Path == "" {
-		return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+		return errs.Precondition(errs.ConfigInvalid, codeS3PathMissing,
 			fmt.Errorf("s3_path is required"))
 	}
 
@@ -115,9 +115,11 @@ func (c *Config) Validate() error {
 	if c.CatalogType == "unity" {
 		c.NoIdentifierFields = true
 	}
-	// BigLake requires GoogleAuthManager for authentication
+	// BigLake requires GoogleAuthManager for authentication, and catalogs in
+	// vended-credentials mode reject table requests without access delegation
 	if c.CatalogType == "biglake" {
 		c.RestAuthType = "org.apache.iceberg.gcp.auth.GoogleAuthManager"
+		c.RESTAccessDelegation = "vended-credentials"
 	}
 	// Horizon requires access delegation
 	if c.CatalogType == "horizon" {
@@ -154,17 +156,17 @@ func (c *Config) Validate() error {
 	switch c.CatalogType {
 	case JDBCCatalog:
 		if c.JDBCUrl == "" {
-			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+			return errs.Precondition(errs.ConfigInvalid, codeJDBCURLMissing,
 				fmt.Errorf("jdbc_url is required when using JDBC catalog"))
 		}
 	case RestCatalog:
 		if c.RestCatalogURL == "" {
-			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+			return errs.Precondition(errs.ConfigInvalid, codeRestCatalogURLMissing,
 				fmt.Errorf("rest_catalog_url is required when using REST catalog"))
 		}
 	case HiveCatalog:
 		if c.HiveURI == "" {
-			return errs.Precondition(errs.ConfigInvalid, codeCatalogConfigInvalid,
+			return errs.Precondition(errs.ConfigInvalid, codeHiveURIMissing,
 				fmt.Errorf("hive_uri is required when using Hive catalog"))
 		}
 	case GlueCatalog:

@@ -327,7 +327,8 @@ jobs:
       actions: read
       id-token: write
       contents: read
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: its x64 machines vary in CPU speed, which swings the RPS this job gates on.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     concurrency:
       group: performance-tests-${{ matrix.driver }}

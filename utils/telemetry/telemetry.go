@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -260,10 +261,105 @@ func TrackSyncCompleted(syncID string, mix types.StreamMix, sourceType string, d
 	})
 }
 
-// TrackFailure reports why a command failed. The payload is a classification, not a
-// description: every field is a constant from this repo or a code the vendor defines, so no
-// config value, server message or user input can reach it. Absent fields are normal.
-func TrackFailure(command, errorSource, syncID string, f errs.Failure) {
+// What replaces sensitive text in a failure message.
+const (
+	urlMask   = "<URL>"
+	hostMask  = "<HOST>"
+	valueMask = "xxx"
+	// passwordMessage replaces a whole message that mentions a password.
+	passwordMessage = "error most likely due to wrong password"
+)
+
+// Mixpanel cuts a string property at 255 characters, so the message is spread over a few.
+const (
+	messagePropSize  = 255
+	messagePropCount = 4
+)
+
+// The writer config fields whose values must not appear in a failure message.
+var (
+	addressKeys    = []string{"jdbc_url", "rest_catalog_url", "oauth2_uri", "hive_uri", "s3_endpoint", "glue_endpoint", "iceberg_s3_path"}
+	credentialKeys = []string{"jdbc_username", "jdbc_password"}
+)
+
+// address is a URL of any scheme: a catalog, a storage path or a JDBC address, which can carry a
+// user and password. Also what follows a configured value already replaced, so a path under the
+// configured storage path goes with it.
+var address = regexp.MustCompile(`(?:jdbc:|[A-Za-z][\w+.-]*://)\S*|` + urlMask + `/\S*`)
+
+// hostIn finds the host in one address: after the scheme and any user:password@, up to the port
+// or path.
+var hostIn = regexp.MustCompile(`^(?:.*://)?(?:[^/]*@)?([^:/?]+)`)
+
+// shapeMasks are the forms sensitive text takes that no config value matches, each with what
+// replaces it. "${1}" keeps the words that introduce the value.
+var shapeMasks = []struct {
+	shape *regexp.Regexp
+	mask  string
+}{
+	// A row value, where the Java writer and Iceberg's Parquet writer quote one they could not
+	// write. Everything after it is the value or an error repeating it.
+	{regexp.MustCompile(`(?s)(for field .*? value |raw value: |Cannot write value[^:]*: ).*`), "${1}" + valueMask},
+	// The address a host resolved to, as Java prints it.
+	{regexp.MustCompile(`\b(?:\d{1,3}(?:\.\d{1,3}){3}|(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})\b`), hostMask},
+	// The user or role Postgres rejected.
+	{regexp.MustCompile(`((?:user|role) )"[^"]*"`), "${1}" + valueMask},
+	// An AWS resource name, which holds the account and, in a denial, the user.
+	{regexp.MustCompile(`arn:aws[\w-]*:[^\s,)]+`), valueMask},
+}
+
+// maskMessage removes addresses, hosts, storage paths, user names, passwords and record values
+// from a failure message, and replaces a message that mentions a password altogether.
+func maskMessage(message string, destinationConfig *types.WriterConfig) string {
+	var writerConfig map[string]interface{}
+	if destinationConfig != nil {
+		writerConfig, _ = destinationConfig.WriterConfig.(map[string]interface{})
+	}
+
+	// 1. What the config holds, exactly as written.
+	for _, key := range addressKeys {
+		if value, _ := writerConfig[key].(string); value != "" {
+			message = strings.ReplaceAll(message, value, urlMask)
+		}
+	}
+	for _, key := range credentialKeys {
+		if value, _ := writerConfig[key].(string); value != "" {
+			message = strings.ReplaceAll(message, value, valueMask)
+		}
+	}
+
+	// 2. Any other address. Before the password check, so a URL carrying "password=" does not
+	// turn every failure into a password one.
+	message = address.ReplaceAllString(message, urlMask)
+	if strings.Contains(strings.ToLower(message), "password") {
+		return passwordMessage
+	}
+
+	// 3. A configured host named alone, with whatever is attached to it: a port, a resolved
+	// address. A value can list several hosts.
+	for _, key := range addressKeys {
+		value, _ := writerConfig[key].(string)
+		for _, one := range strings.Split(value, ",") {
+			if host := hostIn.FindStringSubmatch(one); host != nil {
+				attached := regexp.MustCompile(`\S*` + regexp.QuoteMeta(host[1]) + `\S*`)
+				message = attached.ReplaceAllString(message, hostMask)
+			}
+		}
+	}
+
+	// 4. The shapes no config value matches.
+	for _, m := range shapeMasks {
+		message = m.shape.ReplaceAllString(message, m.mask)
+	}
+	return strings.Join(strings.Fields(message), " ")
+}
+
+// TrackFailure reports why a command failed. Every field but the message is a constant from this
+// repo or a code the vendor defines. The message is the error text the Iceberg writer raised,
+// masked by maskMessage. Absent fields are normal.
+func TrackFailure(command, errorSource, syncID string, destinationConfig *types.WriterConfig, f errs.Failure) {
+	_, catalogType := destinationShape(destinationConfig)
+
 	send("failure - cli", func() {
 		// The rest of the run's shape is on the sync events, reachable through sync_id.
 		props := map[string]interface{}{
@@ -282,6 +378,33 @@ func TrackFailure(command, errorSource, syncID string, f errs.Failure) {
 		}
 		if f.ErrorType != "" {
 			props["error_type"] = f.ErrorType
+		}
+		// Set only when an Iceberg destination config was read.
+		if catalogType != "" {
+			props["catalog_type"] = catalogType
+		}
+		// Set only by the Iceberg writer.
+		if f.Origin != "" {
+			props["origin"] = f.Origin
+		}
+		if f.Operation != "" {
+			props["operation"] = f.Operation
+		}
+		if f.HTTPStatus != 0 {
+			props["http_status"] = f.HTTPStatus
+		}
+		if f.ServerErrorType != "" {
+			props["server_error_type"] = f.ServerErrorType
+		}
+		// error_message, then error_message_2 and so on while text remains.
+		message := maskMessage(f.Message, destinationConfig)
+		for part := 1; part <= messagePropCount && message != ""; part++ {
+			key := "error_message"
+			if part > 1 {
+				key = fmt.Sprintf("error_message_%d", part)
+			}
+			size := min(len(message), messagePropSize)
+			props[key], message = message[:size], message[size:]
 		}
 
 		if err := telemetry.sendEvent(eventFailure, props); err != nil {

@@ -3,8 +3,8 @@ package compatibility
 // Comparing the two runs' destination metadata.
 //
 // compareDestinationOutputs proves both sides hold the same rows. Two destinations can hold the same
-// rows and still differ where readers and resumes look: one more snapshot per sync, equality deletes
-// where the other wrote positional ones, a column without stats, an olake_2pc a later sync cannot
+// rows and still differ where readers and resumes look: one more snapshot per sync, position deletes
+// the other did not write, a column without stats, an olake_2pc a later sync cannot
 // resume from. testutils reads and normalizes each side's metadata (testutils.ReadIcebergMetadata,
 // testutils.ReadParquetMetadata); this file compares the two as one flat map, so a difference reads
 // as one line per key.
