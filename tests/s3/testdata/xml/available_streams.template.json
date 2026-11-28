@@ -155,8 +155,7 @@
                     "dv"
                 ],
                 "available_write_modes": [
-                    "append",
-                    "upsert"
+                    "append"
                 ],
                 "supported_sync_modes": [
                     "full_refresh",

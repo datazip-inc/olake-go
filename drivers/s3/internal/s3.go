@@ -103,6 +103,11 @@ func (s *S3) MaxConnections() int {
 	return s.config.MaxThreads
 }
 
+// SupportedWriteModes allows only append: an S3 source only supports append writes.
+func (s *S3) SupportedWriteModes() []types.WriteMode {
+	return []types.WriteMode{types.WriteModeAppend}
+}
+
 // MaxRetries returns the maximum number of retry attempts
 func (s *S3) MaxRetries() int {
 	return s.config.RetryCount
