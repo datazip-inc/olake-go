@@ -12,37 +12,113 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/datazip-inc/olake/constants"
+	"github.com/datazip-inc/olake/drivers/abstract"
 	"github.com/datazip-inc/olake/drivers/mysql/internal/binlog"
 	"github.com/datazip-inc/olake/types"
+	"github.com/datazip-inc/olake/utils/testutils"
+	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMySQL_StreamChanges(t *testing.T) {
-	// An unrelated server can reuse the filename with an offset ahead of or behind ours.
-	tests := []struct {
+	testutils.UseStateFile(t)
+	testCases := []struct {
 		name string
-		pos  uint32
-	}{{"metadata behind", 100}, {"same position", 200}, {"metadata ahead", 300}}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			state := MySQLGlobalState{
-				ServerID: 1001,
-				State:    binlog.Binlog{Position: mysql.Position{Name: "mysql-bin.000001", Pos: 200}, ServerUUID: "server-a"},
+		// metadataPos is the offset an unrelated server's checkpoint claims in our binlog file, which can be
+		// ahead of or behind ours; StreamChanges must reject it before opening a connection.
+		metadataPos uint32
+		statements  []string
+		want        []abstract.CDCChange
+	}{
+		{
+			name:        "metadata behind",
+			metadataPos: 100,
+		},
+		{
+			name:        "same position",
+			metadataPos: 200,
+		},
+		{
+			name:        "metadata ahead",
+			metadataPos: 300,
+		},
+		{
+			name:       "streams an insert",
+			statements: []string{"INSERT INTO users VALUES (1, 'alice')"},
+			want: []abstract.CDCChange{
+				{Kind: "insert", Data: map[string]any{"id": int32(1), "name": "alice"}},
+			},
+		},
+		{
+			name: "streams an update with the new row",
+			statements: []string{
+				"INSERT INTO users VALUES (1, 'alice')",
+				"UPDATE users SET name = 'bob' WHERE id = 1",
+			},
+			want: []abstract.CDCChange{
+				{Kind: "insert", Data: map[string]any{"id": int32(1), "name": "alice"}},
+				{Kind: "update", Data: map[string]any{"id": int32(1), "name": "bob"}},
+			},
+		},
+		{
+			name: "streams a delete with the old row",
+			statements: []string{
+				"INSERT INTO users VALUES (1, 'alice')",
+				"DELETE FROM users WHERE id = 1",
+			},
+			want: []abstract.CDCChange{
+				{Kind: "insert", Data: map[string]any{"id": int32(1), "name": "alice"}},
+				{Kind: "delete", Data: map[string]any{"id": int32(1), "name": "alice"}},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.metadataPos != 0 {
+				state := MySQLGlobalState{
+					ServerID: 1001,
+					State:    binlog.Binlog{Position: mysql.Position{Name: "mysql-bin.000001", Pos: 200}, ServerUUID: "server-a"},
+				}
+				m := &MySQL{state: &types.State{RWMutex: &sync.RWMutex{}, Global: &types.GlobalState{State: state}}}
+				metadata, err := json.Marshal(binlog.Binlog{Position: mysql.Position{Name: "mysql-bin.000001", Pos: tc.metadataPos}, ServerUUID: "server-b"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = m.StreamChanges(context.Background(), 0, map[string]any{"orders": string(metadata)}, nil)
+				if !errors.Is(err, constants.ErrNonRetryable) || !strings.Contains(err.Error(), "invalid metadata for stream[orders]") {
+					t.Fatalf("expected rejection before opening a connection, got %v", err)
+				}
+				if got := m.state.GetGlobal().State; !reflect.DeepEqual(got, state) {
+					t.Fatalf("source state changed: got %+v, want %+v", got, state)
+				}
+				return
 			}
-			m := &MySQL{state: &types.State{RWMutex: &sync.RWMutex{}, Global: &types.GlobalState{State: state}}}
-			metadata, err := json.Marshal(binlog.Binlog{Position: mysql.Position{Name: "mysql-bin.000001", Pos: tt.pos}, ServerUUID: "server-b"})
-			if err != nil {
-				t.Fatal(err)
+			// Every case writes the same row to the same table, so a change leaking between databases shows in got.
+			t.Parallel()
+			config := testConfig(testhandler.New(t))
+			config.UpdateMethod = map[string]any{"initial_wait_time": 120}
+			m := &MySQL{config: config}
+			require.NoError(t, m.Setup(t.Context()))
+			t.Cleanup(func() { _ = m.Close() })
+			_, err := m.client.ExecContext(t.Context(), "CREATE TABLE users (id int PRIMARY KEY, name text)")
+			require.NoError(t, err)
+			m.SetupState(&types.State{RWMutex: &sync.RWMutex{}, Type: types.GlobalType})
+			require.NoError(t, m.PreCDC(t.Context(), []types.StreamInterface{types.NewStream("users", config.Database, nil).Wrap(0)}))
+			for _, statement := range tc.statements {
+				_, err := m.client.ExecContext(t.Context(), statement)
+				require.NoError(t, err)
 			}
-			_, err = m.StreamChanges(context.Background(), 0, map[string]any{"orders": string(metadata)}, nil)
-			if !errors.Is(err, constants.ErrNonRetryable) || !strings.Contains(err.Error(), "invalid metadata for stream[orders]") {
-				t.Fatalf("expected rejection before opening a connection, got %v", err)
-			}
-			if got := m.state.GetGlobal().State; !reflect.DeepEqual(got, state) {
-				t.Fatalf("source state changed: got %+v, want %+v", got, state)
-			}
+
+			var got []abstract.CDCChange
+			_, err = m.StreamChanges(t.Context(), 0, nil, func(_ context.Context, change abstract.CDCChange) error {
+				got = append(got, abstract.CDCChange{Kind: change.Kind, Data: change.Data})
+				return nil
+			})
+			require.NoError(t, err)
+			require.NoError(t, m.PostCDC(t.Context(), 0))
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

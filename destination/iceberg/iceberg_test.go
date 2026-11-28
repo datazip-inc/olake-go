@@ -1,9 +1,17 @@
 package iceberg
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/datazip-inc/olake/constants"
+	"github.com/datazip-inc/olake/destination"
+	"github.com/datazip-inc/olake/destination/destinationtest"
+	"github.com/datazip-inc/olake/types"
+	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 )
 
 func TestIsValidTypeForColumn(t *testing.T) {
@@ -246,6 +254,59 @@ func TestParseSchema(t *testing.T) {
 			schema, err := parseSchema(tc.schema)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.want, schema)
+		})
+	}
+}
+
+// olakeColumns are the columns OLake adds to every table, with the types the writer reports back.
+var olakeColumns = map[string]string{
+	constants.OlakeID:        "string",
+	constants.OpType:         "string",
+	constants.OlakeTimestamp: "timestamptz",
+	constants.CdcTimestamp:   "timestamptz",
+}
+
+func TestIcebergSetup(t *testing.T) {
+	testCases := []struct {
+		name          string
+		normalization bool
+		// want is the table's schema besides the olake columns, as the writer reports it back.
+		want map[string]string
+	}{
+		{
+			name: "creates a table that keeps each record in one data column",
+			want: map[string]string{constants.StringifiedData: "string"},
+		},
+		{
+			name:          "creates a column for each field when normalization is on",
+			normalization: true,
+			want:          map[string]string{"id": "long", "name": "string"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The cases share one writer JVM, each in a namespace of its own.
+			t.Parallel()
+			dest := testhandler.New(t).Destination(destinationtest.IcebergJVM)
+			stream := types.NewStream("users", "public", nil)
+			stream.UpsertField("id", types.Int64, false, false)
+			stream.UpsertField("name", types.String, true, false)
+			stream.UpsertField(constants.OlakeID, types.String, false, true)
+			stream.UpsertField(constants.OpType, types.String, false, true)
+			stream.UpsertField(constants.OlakeTimestamp, types.TimestampMicro, false, true)
+			stream.UpsertField(constants.CdcTimestamp, types.TimestampMicro, true, true)
+			configured := stream.Wrap(0)
+			configured.StreamMetadata.DestinationDatabase = dest.Database
+			configured.StreamMetadata.Normalization = &tc.normalization
+
+			i := &Iceberg{config: &Config{}, server: sharedJVM(t)}
+			got, _, err := i.Setup(t.Context(), configured, nil, &destination.Options{ThreadID: dest.Database, Backfill: true})
+			require.NoError(t, err)
+			// Close ends the writer session Setup opened in the shared JVM.
+			require.NoError(t, i.Close(t.Context(), nil))
+			want := maps.Clone(olakeColumns)
+			maps.Copy(want, tc.want)
+			require.Equal(t, want, got)
 		})
 	}
 }

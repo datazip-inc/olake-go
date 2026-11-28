@@ -124,6 +124,7 @@ func NewWriterPool(ctx context.Context, config *types.WriterConfig, syncStreams 
 	err = adapter.Check(ctx)
 	stopCheck()
 	if err != nil {
+		// TODO: shut the pool down before returning; a failed Check leaves the writer, such as Iceberg's JVM, running.
 		return nil, fmt.Errorf("failed to test destination: %w", err)
 	}
 

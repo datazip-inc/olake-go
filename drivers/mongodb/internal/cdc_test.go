@@ -7,11 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/datazip-inc/olake/drivers/abstract"
 	"github.com/datazip-inc/olake/types"
+	"github.com/datazip-inc/olake/utils/testutils"
+	"github.com/datazip-inc/olake/utils/testutils/testhandler"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
 )
 
@@ -514,6 +518,78 @@ func TestResumeTokenOfOneStreamDoesNotReachAnother(t *testing.T) {
 			data, resumeToken = pendingCursors(m, other)
 			assert.Equal(mt, otherToken, data, "_data of orders._typeBits")
 			assert.Equal(mt, savedToken(otherToken, false), resumeToken, "whole token of orders._typeBits")
+		})
+	}
+}
+
+func TestMongoStreamChanges(t *testing.T) {
+	testutils.UseStateFile(t)
+	alice := bson.D{{Key: "_id", Value: int32(1)}, {Key: "name", Value: "alice"}}
+	testCases := []struct {
+		name  string
+		write func(ctx context.Context, users *mongo.Collection) error
+		want  []abstract.CDCChange
+	}{
+		{
+			name: "streams an insert",
+			write: func(ctx context.Context, users *mongo.Collection) error {
+				_, err := users.InsertOne(ctx, alice)
+				return err
+			},
+			want: []abstract.CDCChange{
+				{Kind: "insert", Data: map[string]any{"_id": int32(1), "name": "alice"}},
+			},
+		},
+		{
+			name: "streams an update with the whole document",
+			write: func(ctx context.Context, users *mongo.Collection) error {
+				if _, err := users.InsertOne(ctx, alice); err != nil {
+					return err
+				}
+				_, err := users.UpdateOne(ctx, bson.D{{Key: "_id", Value: int32(1)}}, bson.D{{Key: "$set", Value: bson.D{{Key: "name", Value: "bob"}}}})
+				return err
+			},
+			want: []abstract.CDCChange{
+				{Kind: "insert", Data: map[string]any{"_id": int32(1), "name": "alice"}},
+				{Kind: "update", Data: map[string]any{"_id": int32(1), "name": "bob"}},
+			},
+		},
+		{
+			name: "streams a delete with only the document key",
+			write: func(ctx context.Context, users *mongo.Collection) error {
+				if _, err := users.InsertOne(ctx, alice); err != nil {
+					return err
+				}
+				_, err := users.DeleteOne(ctx, bson.D{{Key: "_id", Value: int32(1)}})
+				return err
+			},
+			want: []abstract.CDCChange{
+				{Kind: "insert", Data: map[string]any{"_id": int32(1), "name": "alice"}},
+				{Kind: "delete", Data: map[string]any{"_id": int32(1)}},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Every case writes the same document to the same collection, so a change leaking between databases shows in got.
+			t.Parallel()
+			config := testConfig(testhandler.New(t))
+			m := &Mongo{config: config}
+			require.NoError(t, m.Setup(t.Context()))
+			t.Cleanup(func() { _ = m.Close(context.Background()) })
+			require.NoError(t, m.client.Database(config.Database).CreateCollection(t.Context(), "users"))
+			m.SetupState(&types.State{RWMutex: &sync.RWMutex{}, Type: types.StreamType})
+			require.NoError(t, m.PreCDC(t.Context(), []types.StreamInterface{types.NewStream("users", config.Database, nil).Wrap(0)}))
+			require.NoError(t, tc.write(t.Context(), m.client.Database(config.Database).Collection("users")))
+
+			var got []abstract.CDCChange
+			_, err := m.StreamChanges(t.Context(), 0, nil, func(_ context.Context, change abstract.CDCChange) error {
+				got = append(got, abstract.CDCChange{Kind: change.Kind, Data: change.Data})
+				return nil
+			})
+			require.NoError(t, err)
+			require.NoError(t, m.PostCDC(t.Context(), 0))
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

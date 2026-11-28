@@ -260,6 +260,24 @@ func startServer(config *Config) (*serverInstance, error) {
 	}, nil
 }
 
+// connectServer connects to an Iceberg writer JVM already running at addr instead of starting one, as unit tests
+// do with the JVM they share. It starts and stops nothing; closing the connection is the caller's job.
+func connectServer(addr string) (*serverInstance, error) {
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new grpc client: %w", err)
+	}
+	return &serverInstance{
+		client:           proto.NewRecordIngestServiceClient(conn),
+		arrowClient:      proto.NewArrowIngestServiceClient(conn),
+		tableIndexClient: proto.NewTableIndexServiceClient(conn),
+		conn:             conn,
+		defaultServerID:  "shared",
+	}, nil
+}
+
 func (s *serverInstance) SendClientRequest(ctx context.Context, payload interface{}) (interface{}, error) {
 	switch p := payload.(type) {
 	case *proto.IcebergPayload:

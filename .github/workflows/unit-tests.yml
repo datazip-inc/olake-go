@@ -16,14 +16,40 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Restore Iceberg writer jar
+        id: jar
+        uses: ./.github/actions/iceberg-jar
+
+      # Only a jar cache miss needs Java, to build the jar with Maven; the writer JVM runs in its container.
+      - name: Set up Java for the Iceberg writer jar
+        if: steps.jar.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # Builds the jar on a cache miss and starts every container while Go sets up; the wait below joins it.
+      - name: Start containers for unit-test
+        id: containers
+        background: true
+        timeout-minutes: 15
+        run: make -j --output-sync=target testutils.all.start
+
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
+          cache-dependency-path: |
+            **/go.sum
+            go.work.sum
 
       - name: Cache driver external dependencies
         uses: ./.github/actions/driver-deps
         with:
           save: "true"
+
+      - name: Wait for containers
+        wait: [containers]
 
       - name: Run All Unit Tests
         run: make test.unit
