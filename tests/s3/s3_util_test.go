@@ -135,7 +135,27 @@ type rowValues struct {
 
 	TimeOfDay time.Duration
 	List      []string
+
+	// Edge values: text numbers past float64 precision, extreme floats, timestamp bounds and
+	// offsets, special characters, deep JSON, a long string, date bounds, a 38-digit decimal, and
+	// optional Parquet columns that move between null and a value.
+	IntBig     int64
+	FloatMax   float64
+	FloatTiny  float64
+	Float32Max float32
+	TSEdge     time.Time
+	TSOffset   time.Time
+	Special    string
+	DeepJSON   string
+	LongStr    string
+	DateEdge   time.Time
+	Dec38      string
+	NullInt    *int64
+	NullBool   *bool
+	ValToNull  *string
 }
+
+func ptr[T any](v T) *T { return &v }
 
 var (
 	// seedValues are carried by the files "add" and "insert" upload, so a row is verified
@@ -184,6 +204,21 @@ var (
 
 		TimeOfDay: 10*time.Hour + 30*time.Minute,
 		List:      []string{"a", "b"},
+
+		IntBig:     9007199254740993,
+		FloatMax:   math.MaxFloat64,
+		FloatTiny:  math.SmallestNonzeroFloat64,
+		Float32Max: math.MaxFloat32,
+		TSEdge:     time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
+		TSOffset:   time.Date(2024, 6, 15, 10, 30, 0, 0, time.FixedZone("", 5*3600+30*60)),
+		Special:    "line1\nline2\ttab \"q\" 's' , \\ back 世界🎉",
+		DeepJSON:   `{"a":{"b":{"c":{"d":"deep"}}}}`,
+		LongStr:    strings.Repeat("x", 100000),
+		DateEdge:   time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC),
+		Dec38:      strings.Repeat("9", 38),
+		NullInt:    nil,
+		NullBool:   nil,
+		ValToNull:  ptr("x"),
 	}
 
 	// updatedValues are carried by the file "update" uploads, and differ from seedValues in
@@ -222,6 +257,21 @@ var (
 
 		TimeOfDay: 8*time.Hour + 45*time.Minute,
 		List:      []string{"x", "y"},
+
+		IntBig:     -9007199254740993,
+		FloatMax:   -math.MaxFloat64,
+		FloatTiny:  -math.SmallestNonzeroFloat64,
+		Float32Max: -math.MaxFloat32,
+		TSEdge:     time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC),
+		TSOffset:   time.Date(2024, 6, 15, 10, 30, 0, 0, time.FixedZone("", -8*3600)),
+		Special:    "updated\nspecial\t\"q\"",
+		DeepJSON:   `{"arr":[1,2],"k":null}`,
+		LongStr:    "short",
+		DateEdge:   time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC),
+		Dec38:      "-" + strings.Repeat("9", 38),
+		NullInt:    ptr(int64(5)),
+		NullBool:   ptr(true),
+		ValToNull:  nil,
 	}
 
 	// S3CSVToDestinationSchema and S3JSONToDestinationSchema are the expected destination
@@ -229,12 +279,15 @@ var (
 	// share the text columns and differ where the variants do: only CSV can carry an
 	// all-empty column, only JSON can carry missing fields and nested values.
 	S3CSVToDestinationSchema = s3TextDestinationSchema(map[string]string{
-		"null_col": "string",
+		"null_col":        "string",
+		"str_special_col": "string",
 	})
 	S3JSONToDestinationSchema = s3TextDestinationSchema(map[string]string{
-		"optional_col": "string",
-		"object_col":   "json",
-		"array_col":    "array",
+		"optional_col":    "string",
+		"str_special_col": "string",
+		"deep_col":        "json",
+		"object_col":      "json",
+		"array_col":       "array",
 	})
 
 	// S3CSVUpdatedDestinationSchema and S3JSONUpdatedDestinationSchema are the destination
@@ -257,6 +310,9 @@ var (
 		"empty_col":      "string",
 		"whitespace_col": "string",
 		"_empty":         "string",
+		"int_big_col":    "string",
+		"float_max_col":  "string",
+		"float_tiny_col": "string",
 	})
 
 	S3XMLUpdatedDestinationSchema = evolvedSchema(S3XMLToDestinationSchema)
@@ -316,6 +372,18 @@ var (
 		"struct_col": "json",
 		"list_col":   "array",
 
+		"float_max_col":   "double",
+		"float_tiny_col":  "double",
+		"float32_max_col": "float",
+		"str_special_col": "string",
+		"str_long_col":    "string",
+		"date_edge_col":   "timestamp",
+		"ts_edge_col":     "timestamp",
+		"dec38_col":       "decimal(38,0)",
+		"bool_null_col":   "boolean",
+		"int_null_col":    "bigint",
+		"val_to_null_col": "string",
+
 		"_last_modified_time": "string",
 	}
 
@@ -342,6 +410,12 @@ func s3TextDestinationSchema(formatSpecific map[string]string) map[string]string
 		"int_col":   "double",
 		"mixed_col": "string",
 		"date_col":  "timestamp",
+
+		"int_big_col":    "double",
+		"float_max_col":  "double",
+		"float_tiny_col": "double",
+		"ts_edge_col":    "timestamp",
+		"ts_offset_col":  "timestamp",
 
 		"ts_col":       "timestamp",
 		"ts_milli_col": "timestamp",
@@ -373,12 +447,19 @@ func expectedTextData(v rowValues) map[string]interface{} {
 		// this expectation honest should the seed ever grow a sub-second part.
 		"ts_col":       arrow.Timestamp(v.TS.Truncate(time.Second).UnixMicro()),
 		"ts_milli_col": arrow.Timestamp(v.TSMilli.UnixMicro()),
+		// Integer text past 2^53 rounds the same way the parser's float64 does.
+		"int_big_col":    float64(v.IntBig),
+		"float_max_col":  v.FloatMax,
+		"float_tiny_col": v.FloatTiny,
+		"ts_edge_col":    arrow.Timestamp(v.TSEdge.UnixMicro()),
+		"ts_offset_col":  arrow.Timestamp(v.TSOffset.UnixMicro()),
 	}
 }
 
 func expectedCSVData(v rowValues) map[string]interface{} {
 	data := expectedTextData(v)
 	data["null_col"] = nil
+	data["str_special_col"] = v.Special
 	return data
 }
 
@@ -389,6 +470,8 @@ func expectedJSONData(v rowValues) map[string]interface{} {
 	// single-key JSON already, so parsing and re-encoding it reproduces the input.
 	data["object_col"] = v.JSON
 	data["array_col"] = mustJSON(v.List)
+	data["str_special_col"] = v.Special
+	data["deep_col"] = v.DeepJSON
 	return data
 }
 
@@ -405,6 +488,11 @@ func expectedXMLData(v rowValues) map[string]interface{} {
 		"date_col":       arrow.Timestamp(v.TS.UTC().Truncate(24 * time.Hour).UnixMicro()),
 		"ts_col":         arrow.Timestamp(v.TS.Truncate(time.Second).UnixMicro()),
 		"ts_milli_col":   arrow.Timestamp(v.TSMilli.UnixMicro()),
+		"int_big_col":    fmt.Sprintf("%d", v.IntBig),
+		"float_max_col":  fmt.Sprintf("%v", v.FloatMax),
+		"float_tiny_col": fmt.Sprintf("%v", v.FloatTiny),
+		"ts_edge_col":    arrow.Timestamp(v.TSEdge.UnixMicro()),
+		"ts_offset_col":  arrow.Timestamp(v.TSOffset.UnixMicro()),
 		"null_col":       nil,
 		"empty_col":      nil,
 		"whitespace_col": nil,
@@ -475,7 +563,27 @@ func expectedParquetData(v rowValues) map[string]interface{} {
 		"map_col":    mustJSON(map[string]interface{}{"k": v.Str}),
 		"struct_col": mustJSON(map[string]interface{}{"a": v.Str, "b": v.Int64}),
 		"list_col":   mustJSON(v.List),
+
+		"float_max_col":   v.FloatMax,
+		"float_tiny_col":  v.FloatTiny,
+		"float32_max_col": v.Float32Max,
+		"str_special_col": v.Special,
+		"str_long_col":    v.LongStr,
+		"date_edge_col":   arrow.Timestamp(v.DateEdge.UnixMicro()),
+		"ts_edge_col":     arrow.Timestamp(v.TSEdge.UnixMicro()),
+		"dec38_col":       testutils.Decimal(v.Dec38),
+		"bool_null_col":   nilOr(v.NullBool),
+		"int_null_col":    nilOr(v.NullInt),
+		"val_to_null_col": nilOr(v.ValToNull),
 	}
+}
+
+// nilOr is the value p points to, or an untyped nil, which is how a null column reads back.
+func nilOr[T any](p *T) interface{} {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 // parquetWriterExpectedData holds the same for the Parquet variant.
@@ -813,7 +921,7 @@ func buildEvolvedCSVFile(t *testing.T, startID int64, vals rowValues, excluded [
 
 func csvFile(startID int64, vals rowValues, evolved bool) []byte {
 	var b strings.Builder
-	b.WriteString("id,str_col,bool_col,float_col,int_col,mixed_col,null_col,date_col,ts_col,ts_milli_col,ts_micro_col,ts_nano_col," + excludedColumn)
+	b.WriteString("id,str_col,bool_col,float_col,int_col,mixed_col,null_col,date_col,ts_col,ts_milli_col,ts_micro_col,ts_nano_col,int_big_col,float_max_col,float_tiny_col,ts_edge_col,ts_offset_col,str_special_col," + excludedColumn)
 	if evolved {
 		b.WriteString("," + evolvedColumn)
 	}
@@ -823,13 +931,16 @@ func csvFile(startID int64, vals rowValues, evolved bool) []byte {
 		mixed, _ := mixedValue(id)
 		// null_col is the empty cell after mixed_col: CSV cannot omit a column, so an
 		// empty value is how the variant spells null.
-		b.WriteString(fmt.Sprintf("%d,%s,%t,%v,%d,%s,,%s,%s,%s,%s,%s,%s",
+		b.WriteString(fmt.Sprintf("%d,%s,%t,%v,%d,%s,,%s,%s,%s,%s,%s,%d,%v,%v,%s,%s,%s,%s",
 			id, vals.Str, vals.Bool, vals.Float, vals.Int64, mixed,
 			vals.TS.UTC().Format(time.DateOnly),
 			vals.TS.Format(time.RFC3339),
 			vals.TSMilli.Format(tsMilliLayout),
 			vals.TSMicro.Format(tsMicroLayout),
 			vals.TSNano.Format(tsNanoLayout),
+			vals.IntBig, vals.FloatMax, vals.FloatTiny,
+			vals.TSEdge.Format(time.RFC3339), vals.TSOffset.Format(time.RFC3339),
+			`"`+strings.ReplaceAll(vals.Special, `"`, `""`)+`"`,
 			excludedColumnValue))
 		if evolved {
 			b.WriteString("," + evolvedColumnValue)
@@ -868,6 +979,13 @@ func jsonlFile(startID int64, vals rowValues, evolved bool) []byte {
 			fmt.Sprintf(`"ts_milli_col": %q`, vals.TSMilli.Format(tsMilliLayout)),
 			fmt.Sprintf(`"ts_micro_col": %q`, vals.TSMicro.Format(tsMicroLayout)),
 			fmt.Sprintf(`"ts_nano_col": %q`, vals.TSNano.Format(tsNanoLayout)),
+			fmt.Sprintf(`"int_big_col": %d`, vals.IntBig),
+			fmt.Sprintf(`"float_max_col": %v`, vals.FloatMax),
+			fmt.Sprintf(`"float_tiny_col": %v`, vals.FloatTiny),
+			fmt.Sprintf(`"ts_edge_col": %q`, vals.TSEdge.Format(time.RFC3339)),
+			fmt.Sprintf(`"ts_offset_col": %q`, vals.TSOffset.Format(time.RFC3339)),
+			fmt.Sprintf(`"str_special_col": %q`, vals.Special),
+			fmt.Sprintf(`"deep_col": %s`, vals.DeepJSON),
 			fmt.Sprintf(`%q: %q`, excludedColumn, excludedColumnValue),
 		}
 		// optional_col rides only on two of the three rows: a field some records lack
@@ -914,6 +1032,11 @@ func xmlFile(startID int64, vals rowValues, evolved bool) []byte {
 		fmt.Fprintf(&b, "    <ts_milli_col>%s</ts_milli_col>\n", vals.TSMilli.Format(tsMilliLayout))
 		fmt.Fprintf(&b, "    <ts_micro_col>%s</ts_micro_col>\n", vals.TSMicro.Format(tsMicroLayout))
 		fmt.Fprintf(&b, "    <ts_nano_col>%s</ts_nano_col>\n", vals.TSNano.Format(tsNanoLayout))
+		fmt.Fprintf(&b, "    <int_big_col>%d</int_big_col>\n", vals.IntBig)
+		fmt.Fprintf(&b, "    <float_max_col>%v</float_max_col>\n", vals.FloatMax)
+		fmt.Fprintf(&b, "    <float_tiny_col>%v</float_tiny_col>\n", vals.FloatTiny)
+		fmt.Fprintf(&b, "    <ts_edge_col>%s</ts_edge_col>\n", vals.TSEdge.Format(time.RFC3339))
+		fmt.Fprintf(&b, "    <ts_offset_col>%s</ts_offset_col>\n", vals.TSOffset.Format(time.RFC3339))
 		fmt.Fprintf(&b, "    <excluded_col>%s</excluded_col>\n", excludedColumnValue)
 		b.WriteString("		<null_col/>\n")
 		b.WriteString(" 	<empty_col></empty_col>\n")
@@ -998,6 +1121,18 @@ type parquetRow struct {
 	// node to its repeated element, so list_col binds to the slice itself.
 	ListCol []string `parquet:"list_col"`
 
+	FloatMaxCol   float64  `parquet:"float_max_col"`
+	FloatTinyCol  float64  `parquet:"float_tiny_col"`
+	Float32MaxCol float32  `parquet:"float32_max_col"`
+	StrSpecialCol string   `parquet:"str_special_col"`
+	StrLongCol    string   `parquet:"str_long_col"`
+	DateEdgeCol   int32    `parquet:"date_edge_col"`
+	TSEdgeCol     int64    `parquet:"ts_edge_col"`
+	Dec38Col      [17]byte `parquet:"dec38_col"`
+	BoolNullCol   *bool    `parquet:"bool_null_col"`
+	IntNullCol    *int64   `parquet:"int_null_col"`
+	ValToNullCol  *string  `parquet:"val_to_null_col"`
+
 	// NewCol carries evolvedColumn, which only evolvedParquetTestSchema declares. Rows are
 	// deconstructed against a schema, so a field no column names is never looked up: the
 	// base file ignores this one, and the evolved file picks it up. It lives here rather
@@ -1057,6 +1192,18 @@ func parquetTestGroup() pq.Group {
 		"map_col":    pq.Map(pq.String(), pq.String()),
 		"struct_col": pq.Group{"a": pq.String(), "b": pq.Int(64)},
 		"list_col":   pq.List(pq.String()),
+
+		"float_max_col":   pq.Leaf(pq.DoubleType),
+		"float_tiny_col":  pq.Leaf(pq.DoubleType),
+		"float32_max_col": pq.Leaf(pq.FloatType),
+		"str_special_col": pq.String(),
+		"str_long_col":    pq.String(),
+		"date_edge_col":   pq.Date(),
+		"ts_edge_col":     pq.Timestamp(pq.Microsecond),
+		"dec38_col":       pq.Decimal(0, 38, pq.FixedLenByteArrayType(17)),
+		"bool_null_col":   pq.Optional(pq.Leaf(pq.BooleanType)),
+		"int_null_col":    pq.Optional(pq.Int(64)),
+		"val_to_null_col": pq.Optional(pq.String()),
 	}
 }
 
@@ -1145,6 +1292,19 @@ func makeParquetRow(id int64, vals rowValues) parquetRow {
 
 		MapCol:  map[string]string{"k": vals.Str},
 		ListCol: vals.List,
+
+		FloatMaxCol:   vals.FloatMax,
+		FloatTinyCol:  vals.FloatTiny,
+		Float32MaxCol: vals.Float32Max,
+		StrSpecialCol: vals.Special,
+		StrLongCol:    vals.LongStr,
+		//nolint:gosec // G115: day counts of fixed seed dates, well inside int32
+		DateEdgeCol:  int32(vals.DateEdge.Unix() / 86400),
+		TSEdgeCol:    vals.TSEdge.UnixMicro(),
+		Dec38Col:     wideDecimalBytes(vals.Dec38),
+		BoolNullCol:  vals.NullBool,
+		IntNullCol:   vals.NullInt,
+		ValToNullCol: vals.ValToNull,
 	}
 	row.StructCol.A = vals.Str
 	row.StructCol.B = vals.Int64
@@ -1252,6 +1412,7 @@ var S3TypeMapping = map[string]string{
 	"bigint":        "bigint",
 	"boolean":       "boolean",
 	"decimal(18,4)": "decimal(18,4)",
+	"decimal(38,0)": "decimal(38,0)",
 	"decimal(38,2)": "decimal(38,2)",
 	"decimal(9,2)":  "decimal(9,2)",
 	"double":        "double",

@@ -103,7 +103,7 @@ const (
 func CreateParquetView(ctx context.Context, t *testing.T, spark sql.SparkSession, view, parquetDB, tableName string) error {
 	t.Helper()
 	path := fmt.Sprintf("s3a://%s/%s*.parquet", ParquetTestBucket, parquetTablePath(parquetDB, tableName))
-	if _, err := spark.Sql(ctx, fmt.Sprintf("CREATE OR REPLACE TEMP VIEW %s AS SELECT * FROM parquet.`%s`", view, path)); err != nil {
+	if _, err := spark.Sql(ctx, fmt.Sprintf("CREATE OR REPLACE TEMP VIEW %s USING parquet OPTIONS (path '%s', datetimeRebaseMode 'CORRECTED', int96RebaseMode 'CORRECTED')", view, path)); err != nil {
 		return err
 	}
 	// t.Context() is canceled before cleanups run, so the drop needs a context that outlives it.
