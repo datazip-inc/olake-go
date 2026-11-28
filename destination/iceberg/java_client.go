@@ -84,6 +84,10 @@ func getServerConfigJSON(config *Config, port int, arrowWriterEnabled bool, gcpC
 		serverConfig["catalog-impl"] = "org.apache.iceberg.rest.RESTCatalog"
 		serverConfig["uri"] = config.RestCatalogURL
 		serverConfig["rest.sigv4-enabled"] = strconv.FormatBool(config.RestSigningV4)
+		// Custom headers go first so the dedicated header fields below take precedence.
+		for name, value := range config.RestHeaders {
+			addMapKeyIfNotEmpty("header."+name, value)
+		}
 		addMapKeyIfNotEmpty("rest.signing-name", config.RestSigningName)
 		addMapKeyIfNotEmpty("rest.signing-region", config.RestSigningRegion)
 		addMapKeyIfNotEmpty("token", config.RestToken)

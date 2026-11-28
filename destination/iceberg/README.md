@@ -135,6 +135,25 @@ Create a json for writer config (writer.json)
 - `rest_signing_region` - Region for AWS Signature V4 signing
 - `rest_signing_v_4` - Enable AWS Signature V4 signing (boolean)
 
+**Custom Headers (optional):**
+- `rest_headers` - Map of extra HTTP headers sent on every REST catalog request. Each entry is passed to Iceberg as `header.<name>`. Values may be sensitive (e.g. API keys), so treat this config as a secret.
+
+For example, Google BigLake takes a quota/billing project through the `x-goog-user-project` header:
+```json
+{
+  "type": "ICEBERG",
+  "writer": {
+    "catalog_type": "biglake",
+    "rest_catalog_url": "https://biglake.googleapis.com/iceberg/v1/restcatalog",
+    "iceberg_s3_path": "gs://<BUCKET_NAME>",
+    "gcp_service_account_json": "<SERVICE_ACCOUNT_KEY_JSON>",
+    "rest_headers": {
+      "x-goog-user-project": "<GCP_PROJECT_ID>"
+    }
+  }
+}
+```
+
 ### S3 Table Bucket
 Create a json for writer config (writer.json)
 ```json
