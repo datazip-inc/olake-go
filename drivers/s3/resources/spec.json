@@ -20,6 +20,7 @@
     },
     "access_key_id": {
       "type": "string",
+      "format": "password",
       "title": "Access Key ID",
       "description": "AWS access key ID for authentication (optional - if omitted, uses IAM role or default credential chain)"
     },

@@ -213,6 +213,7 @@
                 },
                 "credential": {
                   "type": "string",
+                  "format": "password",
                   "title": "REST Credential",
                   "description": "OAuth2 client credentials in client_id:client_secret format"
                 },
@@ -355,6 +356,7 @@
                         },
                         "credential": {
                           "type": "string",
+                          "format": "password",
                           "title": "REST Credential",
                           "description": "OAuth2 client credentials in client_id:client_secret format"
                         },
@@ -468,6 +470,7 @@
                         },
                         "credential": {
                           "type": "string",
+                          "format": "password",
                           "title": "REST Credential",
                           "description": "Client secret or credential for OAuth2 (Usually id:secret)"
                         },
@@ -632,6 +635,7 @@
                         },
                         "credential": {
                           "type": "string",
+                          "format": "password",
                           "title": "REST Credential",
                           "description": "OAuth2 client credentials in client_id:client_secret format"
                         },
@@ -754,6 +758,7 @@
                         },
                         "credential": {
                           "type": "string",
+                          "format": "password",
                           "title": "REST Credential",
                           "description": "OAuth2 client credentials in client_id:client_secret format"
                         },
@@ -917,6 +922,7 @@
                         },
                         "credential": {
                           "type": "string",
+                          "format": "password",
                           "title": "Key-pair JWT",
                           "description": "JWT signed with your snowflake key pair used as iceberg credential"
                         },
@@ -938,6 +944,7 @@
                         },
                         "credential": {
                           "type": "string",
+                          "format": "password",
                           "title": "Programmatic Access Token",
                           "description": "Snowflake PAT used as iceberg credential"
                         }
