@@ -167,6 +167,25 @@ func (th *TestHandler) IcebergFullLoadAndCDC(
 		},
 	}
 
+	for i, update := range th.PrimaryKeyUpdates {
+		tc := syncTestCase{
+			name:             update.Name,
+			operation:        update.Operation,
+			useState:         true,
+			opSymbol:         "d",
+			primaryKeyUpdate: &update,
+		}
+		if i == 0 {
+			// DEFAULT identity sends only the old key, which the suite's non-key filter would drop.
+			tc.preSetup = []func(*testutils.TestConfig) error{func(config *testutils.TestConfig) error {
+				return editSelectedStream(config, th.Namespace, testTable, func(entry map[string]interface{}) {
+					delete(entry, "filter_config")
+				})
+			}}
+		}
+		dbTestCases = append(dbTestCases, tc)
+	}
+
 	kafkaTestCases := []syncTestCase{
 		{
 			name:      "CDC - strict - insert",
@@ -222,6 +241,12 @@ func (th *TestHandler) IcebergFullLoadAndCDC(
 	// wrote, and it costs a full sync each to learn nothing.
 	for _, tc := range testCases {
 		if passed := t.Run(tc.name, func(t *testing.T) {
+			for _, preSetup := range tc.preSetup {
+				if err := preSetup(th.TestConfig); err != nil {
+					t.Fatalf("%s pre-sync setup failed: %v", tc.name, err)
+				}
+			}
+
 			// schema evolution
 			if tc.operation == "update" {
 				if !th.TestConfig.SkipSchemaEvolution {
@@ -241,6 +266,10 @@ func (th *TestHandler) IcebergFullLoadAndCDC(
 				tc.name != "Full-Refresh",
 			); err != nil {
 				t.Fatalf("%s test failed: %v", tc.name, err)
+			}
+
+			if tc.primaryKeyUpdate != nil {
+				th.verifyPrimaryKeyUpdate(ctx, t, testTable, tc.primaryKeyUpdate)
 			}
 		}); !passed {
 			t.Logf("stopping this scenario after %q failed; the remaining cases depend on the state it did not write", tc.name)

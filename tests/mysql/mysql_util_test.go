@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math"
 	"strconv"
@@ -17,6 +18,38 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
+
+var primaryKeyUpdates = []integration.PrimaryKeyUpdate{
+	{
+		Name:        "CDC - primary key update",
+		Operation:   "update_primary_key",
+		WantOpTypes: map[string]string{"2": "d", "3": "r", "4": "r", "101": "u"},
+		WantMarkers: map[string]string{"3": "3", "4": "4", "101": "2"},
+	},
+	{
+		Name:        "CDC - primary key reuse",
+		Operation:   "return_primary_key",
+		WantOpTypes: map[string]string{"2": "u", "3": "r", "4": "r", "101": "d"},
+		WantMarkers: map[string]string{"2": "2", "3": "3", "4": "4"},
+	},
+	{
+		Name:        "CDC - primary key swap",
+		Operation:   "swap_primary_keys",
+		WantOpTypes: map[string]string{"2": "u", "3": "u", "4": "r", "101": "d"},
+		WantMarkers: map[string]string{"2": "3", "3": "2", "4": "4"},
+	},
+	{
+		Name:        "CDC - primary key shift",
+		Operation:   "shift_primary_keys",
+		WantOpTypes: map[string]string{"2": "d", "3": "u", "4": "u", "101": "d"},
+		WantMarkers: map[string]string{"3": "3", "4": "2"},
+	},
+	{
+		Name:        "CDC - resume after primary key changes",
+		WantOpTypes: map[string]string{"2": "d", "3": "u", "4": "u", "101": "d"},
+		WantMarkers: map[string]string{"3": "3", "4": "2"},
+	},
+}
 
 // performanceCDCStreams is the CDC stream set the performance suite drives, shared between the
 // performance.TestHandler config and the perf operations below.
@@ -274,6 +307,31 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 
 	case "update":
 		query = updateRowQuery(integrationTestTable, seedCols, primaryKey)
+
+	case "update_primary_key":
+		query = fmt.Sprintf("UPDATE %s SET id = 101 WHERE id = 2", integrationTestTable)
+
+	case "return_primary_key":
+		query = fmt.Sprintf("UPDATE %s SET id = 2 WHERE id = 101", integrationTestTable)
+
+	case "swap_primary_keys":
+		tx, err := db.BeginTxx(ctx, nil)
+		require.NoError(t, err)
+		defer func() {
+			if err := tx.Rollback(); err != sql.ErrTxDone {
+				require.NoError(t, err)
+			}
+		}()
+		// A spare positive key works with the seed's unsigned primary key.
+		for _, keys := range [][2]int{{2, 101}, {3, 2}, {101, 3}} {
+			_, err = tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET id = ? WHERE id = ?", integrationTestTable), keys[1], keys[0])
+			require.NoError(t, err, "Failed to swap primary keys")
+		}
+		require.NoError(t, tx.Commit())
+		return
+
+	case "shift_primary_keys":
+		query = fmt.Sprintf("UPDATE %s SET id = id + 1 ORDER BY id DESC", integrationTestTable)
 
 	case "delete":
 		query = fmt.Sprintf("DELETE FROM %s WHERE id = 1", integrationTestTable)

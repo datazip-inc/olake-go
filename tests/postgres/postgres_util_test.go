@@ -21,6 +21,38 @@ const (
 	cdcPublicationName = "performance_publication"
 )
 
+var primaryKeyUpdates = []integration.PrimaryKeyUpdate{
+	{
+		Name:        "CDC - primary key update",
+		Operation:   "update_primary_key",
+		WantOpTypes: map[string]string{"2": "d", "3": "r", "4": "r", "101": "u"},
+		WantMarkers: map[string]string{"3": "3", "4": "4", "101": "2"},
+	},
+	{
+		Name:        "CDC - primary key reuse",
+		Operation:   "return_primary_key",
+		WantOpTypes: map[string]string{"2": "u", "3": "r", "4": "r", "101": "d"},
+		WantMarkers: map[string]string{"2": "2", "3": "3", "4": "4"},
+	},
+	{
+		Name:        "CDC - primary key swap",
+		Operation:   "swap_primary_keys",
+		WantOpTypes: map[string]string{"2": "u", "3": "u", "4": "r", "101": "d"},
+		WantMarkers: map[string]string{"2": "3", "3": "2", "4": "4"},
+	},
+	{
+		Name:        "CDC - primary key shift",
+		Operation:   "shift_primary_keys",
+		WantOpTypes: map[string]string{"2": "d", "3": "u", "4": "u", "101": "d"},
+		WantMarkers: map[string]string{"3": "3", "4": "2"},
+	},
+	{
+		Name:        "CDC - resume after primary key changes",
+		WantOpTypes: map[string]string{"2": "d", "3": "u", "4": "u", "101": "d"},
+		WantMarkers: map[string]string{"3": "3", "4": "2"},
+	},
+}
+
 // performanceCDCStreams is the CDC stream set the performance suite drives, shared between the
 // performance.TestHandler config and the perf operations below.
 var performanceCDCStreams = []string{"trips_cdc", "fhv_trips_cdc"}
@@ -254,6 +286,27 @@ func ExecuteQuery(ctx context.Context, t *testing.T, conf *testutils.TestConfig,
 				excludedColumn = 102,
 				includedColumn = 202
 			WHERE col_bigserial = 1`, integrationTestTable)
+
+	case "update_primary_key":
+		query = fmt.Sprintf("UPDATE %s SET col_bigserial = 101 WHERE col_bigserial = 2", integrationTestTable)
+
+	case "return_primary_key":
+		query = fmt.Sprintf("UPDATE %s SET col_bigserial = 2 WHERE col_bigserial = 101", integrationTestTable)
+
+	case "swap_primary_keys":
+		query = fmt.Sprintf(`DO $$ BEGIN
+			UPDATE %[1]s SET col_bigserial = 101 WHERE col_bigserial = 2;
+			UPDATE %[1]s SET col_bigserial = 2 WHERE col_bigserial = 3;
+			UPDATE %[1]s SET col_bigserial = 3 WHERE col_bigserial = 101;
+		END $$`, integrationTestTable)
+
+	case "shift_primary_keys":
+		// Descending order avoids collisions with keys that have not moved yet.
+		query = fmt.Sprintf(`DO $$ DECLARE old_id bigint; BEGIN
+			FOR old_id IN SELECT col_bigserial FROM %[1]s ORDER BY col_bigserial DESC LOOP
+				UPDATE %[1]s SET col_bigserial = old_id + 1 WHERE col_bigserial = old_id;
+			END LOOP;
+		END $$`, integrationTestTable)
 
 	case "delete":
 		query = fmt.Sprintf("DELETE FROM %s WHERE col_bigserial = 1", integrationTestTable)
