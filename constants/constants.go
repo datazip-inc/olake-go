@@ -81,8 +81,8 @@ const (
 	IndexDBCacheSizePerStream = "OLAKE_INDEX_DB_CACHE_SIZE"
 	MaxOpenFilesPerStream     = "OLAKE_INDEX_DB_MAX_OPEN_FILES"
 	DefaultDirName            = "olake-table-index"
-	DefaultCacheSize          = 128 * 1024 * 1024 // 128 MB default block cache
-	DefaultMemTableSize       = 64 * 1024 * 1024  // 64 MB default memtable
+	DefaultCacheSizeMB        = 128              // 128 MB default block cache
+	DefaultMemTableSize       = 64 * 1024 * 1024 // 64 MB default memtable
 	DefaultMaxOpenFiles       = 1000
 
 	// UnavailableValue is written for a column the source could not send
